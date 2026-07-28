@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+**/dist/
+build/
+**/build/
+.gradle/
+**/.gradle/
+
+# Environment variables & secrets
+.env
+*.env
+*.env.local
+
+# Logs
+*.log
+logs/
+
+# IDE / System files
+.DS_Store
+.vscode/
+.idea/
+
+# Android generated assets & plugins
+selah-app/android/capacitor-cordova-android-plugins/
+selah-app/android/app/src/main/assets/public/
+selah-app/android/app/src/main/assets/capacitor.config.json
+selah-app/android/app/src/main/assets/capacitor.plugins.json
+selah-app/android/app/src/main/res/xml/config.xml

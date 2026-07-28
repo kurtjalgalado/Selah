@@ -1,0 +1,1527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Selah — Worship Planner</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #1e2a4a;
+            --bg-elevated: #243559;
+            --accent: #d4a574;
+            --accent-glow: rgba(212, 165, 116, 0.15);
+            --accent-soft: rgba(212, 165, 116, 0.08);
+            --text-primary: #e8e8f0;
+            --text-secondary: #8892a8;
+            --text-muted: #5c6478;
+            --border: rgba(255, 255, 255, 0.06);
+            --success: #6bcf7f;
+            --danger: #e06c75;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ===== SIDEBAR ===== */
+        .sidebar {
+            position: fixed;
+            left: 0; top: 0; bottom: 0;
+            width: 240px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+        }
+
+        .sidebar-header {
+            padding: 28px 24px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-mark {
+            width: 36px; height: 36px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--accent), #b8865c);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--bg-primary);
+        }
+
+        .logo-text {
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .logo-text span {
+            display: block;
+            font-size: 11px;
+            font-weight: 400;
+            color: var(--text-secondary);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-top: 2px;
+        }
+
+        .nav {
+            padding: 16px 12px;
+            flex: 1;
+        }
+
+        .nav-section {
+            margin-bottom: 24px;
+        }
+
+        .nav-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            padding: 0 12px;
+            margin-bottom: 8px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background: var(--accent-soft);
+            color: var(--accent);
+        }
+
+        .nav-item svg {
+            width: 18px; height: 18px;
+            flex-shrink: 0;
+        }
+
+        .sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .user-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .user-card:hover { background: var(--bg-elevated); }
+
+        .avatar {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6c7ee0, #8a6cf0);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .user-info { flex: 1; }
+        .user-name { font-size: 13px; font-weight: 500; }
+        .user-role { font-size: 11px; color: var(--text-muted); }
+
+        /* ===== MAIN ===== */
+        .main {
+            margin-left: 240px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .topbar {
+            height: 64px;
+            background: rgba(22, 33, 62, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 32px;
+            gap: 24px;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .page-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .search-box {
+            flex: 1;
+            max-width: 420px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 16px 10px 42px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .search-box input::placeholder { color: var(--text-muted); }
+
+        .search-icon {
+            position: absolute;
+            left: 14px; top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            width: 18px; height: 18px;
+        }
+
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-left: auto;
+        }
+
+        .filter-dropdown {
+            position: relative;
+        }
+
+        .filter-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .filter-btn:hover {
+            border-color: var(--accent);
+            color: var(--text-primary);
+        }
+
+        .filter-btn svg { width: 16px; height: 16px; }
+
+        .filter-menu {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            width: 220px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 8px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-8px);
+            transition: all 0.2s;
+        }
+
+        .filter-menu.open {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .filter-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-secondary);
+            transition: background 0.15s;
+        }
+
+        .filter-option:hover {
+            background: var(--bg-card);
+            color: var(--text-primary);
+        }
+
+        .filter-option.selected {
+            color: var(--accent);
+        }
+
+        .filter-option.selected::after {
+            content: '✓';
+            font-size: 16px;
+        }
+
+        .add-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 18px;
+            background: linear-gradient(135deg, var(--accent), #b8865c);
+            border: none;
+            border-radius: 10px;
+            color: var(--bg-primary);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .add-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px var(--accent-glow);
+        }
+
+        .add-btn svg { width: 16px; height: 16px; }
+
+        /* ===== CONTENT ===== */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px 32px;
+        }
+
+        .content::-webkit-scrollbar { width: 6px; }
+        .content::-webkit-scrollbar-track { background: transparent; }
+        .content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .content::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title .count {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            padding: 2px 10px;
+            background: var(--bg-card);
+            border-radius: 20px;
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 4px;
+            padding: 4px;
+            background: var(--bg-card);
+            border-radius: 8px;
+        }
+
+        .view-btn {
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-family: inherit;
+        }
+
+        .view-btn.active {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+        }
+
+        .view-btn svg { width: 14px; height: 14px; }
+
+        /* ===== SONG GRID ===== */
+        .song-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+
+        .song-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.25s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .song-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent), transparent);
+            opacity: 0;
+            transition: opacity 0.25s;
+        }
+
+        .song-card:hover {
+            border-color: rgba(212, 165, 116, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .song-card:hover::before { opacity: 1; }
+
+        .song-card-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .song-number {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 32px;
+            font-weight: 500;
+            color: var(--accent);
+            opacity: 0.4;
+            line-height: 1;
+        }
+
+        .song-category {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            color: var(--accent);
+            background: var(--accent-soft);
+        }
+
+        .song-title {
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            line-height: 1.3;
+        }
+
+        .song-artist {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+
+        .song-card-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 14px;
+            border-top: 1px solid var(--border);
+        }
+
+        .song-key {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .key-badge {
+            padding: 3px 8px;
+            background: var(--bg-elevated);
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 11px;
+            color: var(--text-primary);
+        }
+
+        .song-tempo {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .song-tempo svg { width: 12px; height: 12px; }
+
+        /* ===== SONG DETAIL ===== */
+        .detail-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            z-index: 200;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+        }
+
+        .detail-overlay.open {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .detail-panel {
+            width: 100%;
+            max-width: 720px;
+            max-height: 90vh;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transform: scale(0.95);
+            transition: transform 0.3s;
+        }
+
+        .detail-overlay.open .detail-panel {
+            transform: scale(1);
+        }
+
+        .detail-header {
+            padding: 24px 28px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+        }
+
+        .detail-title-block h2 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .detail-title-block p {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .close-btn {
+            width: 36px; height: 36px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .close-btn:hover {
+            color: var(--text-primary);
+            border-color: var(--danger);
+        }
+
+        .close-btn svg { width: 18px; height: 18px; }
+
+        .detail-toolbar {
+            padding: 16px 28px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+        }
+
+        .transpose-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+
+        .transpose-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            padding-left: 6px;
+        }
+
+        .transpose-btn {
+            width: 28px; height: 28px;
+            border-radius: 7px;
+            border: none;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.15s;
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .transpose-btn:hover {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        .key-display {
+            min-width: 48px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .detail-meta {
+            display: flex;
+            gap: 16px;
+            margin-left: auto;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: var(--bg-card);
+            border-radius: 8px;
+        }
+
+        .meta-item svg { width: 14px; height: 14px; opacity: 0.6; }
+
+        .detail-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px;
+        }
+
+        .detail-body::-webkit-scrollbar { width: 6px; }
+        .detail-body::-webkit-scrollbar-track { background: transparent; }
+        .detail-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        .lyrics {
+            font-size: 15px;
+            line-height: 1.8;
+            white-space: pre-wrap;
+            color: var(--text-primary);
+        }
+
+        .lyrics .chord {
+            color: var(--accent);
+            font-weight: 600;
+            font-size: 13px;
+            font-family: 'Inter', monospace;
+            vertical-align: super;
+            margin: 0 1px;
+        }
+
+        .lyrics .verse-label {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            margin-top: 16px;
+        }
+
+        .lyrics .verse-label:first-child { margin-top: 0; }
+
+        /* ===== ADD SONG MODAL ===== */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            z-index: 200;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+        }
+
+        .modal-overlay.open {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal {
+            width: 100%;
+            max-width: 560px;
+            max-height: 90vh;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transform: translateY(20px);
+            transition: transform 0.3s;
+        }
+
+        .modal-overlay.open .modal {
+            transform: translateY(0);
+        }
+
+        .modal-header {
+            padding: 24px 28px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .modal-body {
+            padding: 24px 28px;
+            overflow-y: auto;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 120px;
+            line-height: 1.6;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+        }
+
+        .modal-footer {
+            padding: 20px 28px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        .btn-secondary {
+            padding: 10px 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .btn-secondary:hover {
+            color: var(--text-primary);
+            border-color: var(--text-muted);
+        }
+
+        .btn-primary {
+            padding: 10px 24px;
+            background: linear-gradient(135deg, var(--accent), #b8865c);
+            border: none;
+            border-radius: 10px;
+            color: var(--bg-primary);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 4px 16px var(--accent-glow);
+            transform: translateY(-1px);
+        }
+
+        /* ===== EMPTY STATE ===== */
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
+        }
+
+        .empty-state svg {
+            width: 64px; height: 64px;
+            color: var(--text-muted);
+            opacity: 0.3;
+            margin-bottom: 20px;
+        }
+
+        .empty-state h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        /* ===== TOAST ===== */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 14px 24px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+            z-index: 300;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast.success { border-color: var(--success); }
+        .toast.danger { border-color: var(--danger); }
+        .toast svg { width: 18px; height: 18px; }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .main { margin-left: 0; }
+            .topbar { padding: 0 16px; }
+            .content { padding: 20px 16px; }
+            .song-grid { grid-template-columns: 1fr; }
+            .form-row { grid-template-columns: 1fr; }
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .song-card {
+            animation: fadeInUp 0.4s ease backwards;
+        }
+
+        .song-card:nth-child(1) { animation-delay: 0.03s; }
+        .song-card:nth-child(2) { animation-delay: 0.06s; }
+        .song-card:nth-child(3) { animation-delay: 0.09s; }
+        .song-card:nth-child(4) { animation-delay: 0.12s; }
+        .song-card:nth-child(5) { animation-delay: 0.15s; }
+        .song-card:nth-child(6) { animation-delay: 0.18s; }
+        .song-card:nth-child(7) { animation-delay: 0.21s; }
+        .song-card:nth-child(8) { animation-delay: 0.24s; }
+    </style>
+</head>
+<body>
+
+<!-- ===== SIDEBAR ===== -->
+<div class="sidebar">
+    <div class="sidebar-header">
+        <div class="logo">
+            <div class="logo-mark">S</div>
+            <div class="logo-text">Selah<span>Worship Planner</span></div>
+        </div>
+    </div>
+    <nav class="nav">
+        <div class="nav-section">
+            <div class="nav-label">Library</div>
+            <a class="nav-item active">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                All Songs
+            </a>
+            <a class="nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+                Setlists
+            </a>
+            <a class="nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Schedule
+            </a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-label">Tools</div>
+            <a class="nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h2m4 0h6m4 0h2M3 6h18M3 18h18"/></svg>
+                Chord Library
+            </a>
+            <a class="nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 12l3-3 4 4 5-5"/></svg>
+                Analytics
+            </a>
+            <a class="nav-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                Settings
+            </a>
+        </div>
+    </nav>
+    <div class="sidebar-footer">
+        <div class="user-card">
+            <div class="avatar">JM</div>
+            <div class="user-info">
+                <div class="user-name">Jordan Matthews</div>
+                <div class="user-role">Worship Leader</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MAIN ===== -->
+<div class="main">
+    <div class="topbar">
+        <div class="page-title">Song Library</div>
+        <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input type="text" id="searchInput" placeholder="Search by title, artist, or lyrics...">
+        </div>
+        <div class="topbar-actions">
+            <div class="filter-dropdown">
+                <button class="filter-btn" id="filterBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h18M6 12h12M10 20h4"/></svg>
+                    <span id="filterLabel">All Categories</span>
+                </button>
+                <div class="filter-menu" id="filterMenu">
+                    <div class="filter-option selected" data-category="all">All Categories</div>
+                    <div class="filter-option" data-category="Hymn">Hymns</div>
+                    <div class="filter-option" data-category="Modern">Modern Worship</div>
+                    <div class="filter-option" data-category="Praise">Praise</div>
+                    <div class="filter-option" data-category="Chorus">Choruses</div>
+                    <div class="filter-option" data-category="Hymn">Hymn</div>
+                </div>
+            </div>
+            <button class="add-btn" id="addBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14m-7-7h14"/></svg>
+                Add Song
+            </button>
+        </div>
+    </div>
+
+    <div class="content">
+        <div class="section-header">
+            <div class="section-title">
+                Library <span class="count" id="songCount">8</span>
+            </div>
+            <div class="view-toggle">
+                <button class="view-btn active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                    Grid
+                </button>
+                <button class="view-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    List
+                </button>
+            </div>
+        </div>
+
+        <div class="song-grid" id="songGrid"></div>
+    </div>
+</div>
+
+<!-- ===== SONG DETAIL PANEL ===== -->
+<div class="detail-overlay" id="detailOverlay">
+    <div class="detail-panel">
+        <div class="detail-header">
+            <div class="detail-title-block">
+                <h2 id="detailTitle">How Great Is Our God</h2>
+                <p id="detailArtist">Chris Tomlin</p>
+            </div>
+            <button class="close-btn" id="closeDetail">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="detail-toolbar">
+            <div class="transpose-control">
+                <span class="transpose-label">Key</span>
+                <button class="transpose-btn" id="transposeDown">−</button>
+                <span class="key-display" id="keyDisplay">G</span>
+                <button class="transpose-btn" id="transposeUp">+</button>
+            </div>
+            <div class="detail-meta">
+                <div class="meta-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                    <span id="detailCategory">Modern Worship</span>
+                </div>
+                <div class="meta-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span id="detailTempo">80 BPM</span>
+                </div>
+            </div>
+        </div>
+        <div class="detail-body">
+            <div class="lyrics" id="detailLyrics"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== ADD SONG MODAL ===== -->
+<div class="modal-overlay" id="addModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>Add New Song</h2>
+            <button class="close-btn" id="closeModal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Song Title</label>
+                <input type="text" id="newTitle" placeholder="e.g. Amazing Grace">
+            </div>
+            <div class="form-group">
+                <label>Artist / Composer</label>
+                <input type="text" id="newArtist" placeholder="e.g. John Newton">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Original Key</label>
+                    <input type="text" id="newKey" placeholder="e.g. G">
+                </div>
+                <div class="form-group">
+                    <label>Tempo (BPM)</label>
+                    <input type="number" id="newTempo" placeholder="e.g. 80">
+                </div>
+                <div class="form-group">
+                    <label>Category</label>
+                    <select id="newCategory">
+                        <option>Hymn</option>
+                        <option>Modern</option>
+                        <option>Praise</option>
+                        <option>Chorus</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Lyrics & Chords</label>
+                <textarea id="newLyrics" placeholder="[Verse 1]&#10;[G]Amazing grace how [C]sweet the sound&#10;That saved a [G]wretch like me&#10;&#10;[Chorus]&#10;My chains are [Em]gone, I've been set [C]free&#10;My God my [G]Savior has ransomed [D]me"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" id="cancelAdd">Cancel</button>
+            <button class="btn-primary" id="saveSong">Add to Library</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div class="toast" id="toast">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <span id="toastText">Song added successfully</span>
+</div>
+
+<script>
+// ===== SONG DATA =====
+const songs = [
+    {
+        id: 1,
+        number: 1,
+        title: "How Great Is Our God",
+        artist: "Chris Tomlin",
+        originalKey: "G",
+        tempo: 80,
+        category: "Modern",
+        lyrics: `[Verse 1]
+The [G]splendor of a King, cl[C]othed in majesty
+Let all the earth re[G]joice, all the earth re[D]joice
+He [G]wraps Himself in light, and d[C]arkness tries to hide
+And trembles at His [G]voice, trembles at His [D]voice
+
+[Chorus]
+How [G]great is our God, s[C]ing with me
+How [Em]great is our God, and [D]all will see
+How [G]great, how great is our God
+
+[Verse 2]
+Age to age He stands, and time is in His hands
+Beginning and the end, beginning and the end
+The Godhead, three in one: Father, Spirit, Son
+The Lion and the Lamb, the Lion and the Lamb`
+    },
+    {
+        id: 2,
+        number: 2,
+        title: "Amazing Grace",
+        artist: "John Newton",
+        originalKey: "G",
+        tempo: 60,
+        category: "Hymn",
+        lyrics: `[Verse 1]
+A[G]mazing grace how [C]sweet the sound
+That saved a [G]wretch like me
+I [G]once was lost but [C]now am found
+Was blind but [G]now I see
+
+[Verse 2]
+'Twas grace that taught my heart to fear
+And grace my fears relieved
+How precious did that grace appear
+The hour I first believed
+
+[Verse 3]
+The Lord has promised good to me
+His word my hope secures
+He will my shield and portion be
+As long as life endures`
+    },
+    {
+        id: 3,
+        number: 3,
+        title: "Great Is Thy Faithfulness",
+        artist: "Thomas Chisholm",
+        originalKey: "Bb",
+        tempo: 72,
+        category: "Hymn",
+        lyrics: `[Verse 1]
+Great [Bb]is Thy faithfulness, O [Eb]God my Father
+There is no [F]shadow of turning with [Bb]Thee
+Thou changest [Bb]not, Thy compassions they [Eb]fail not
+As Thou hast [F]been Thou forever wilt [Bb]be
+
+[Chorus]
+Great is Thy [Eb]faithfulness, great is Thy [Bb]faithfulness
+Morning by [Cm]morning new mercies I [F]see
+All I have [Bb]needed Thy hand hath [Eb]provided
+Great is Thy [F]faithfulness, Lord unto [Bb]me`
+    },
+    {
+        id: 4,
+        number: 4,
+        title: "10,000 Reasons (Bless the Lord)",
+        artist: "Matt Redman",
+        originalKey: "G",
+        tempo: 74,
+        category: "Modern",
+        lyrics: `[Verse 1]
+The [G]sun comes up, it's a [C]new day dawning
+It's time to [Em]sing Your song a[D]gain
+What[G]ever may pass, and what[C]ever lies before me
+Let me be [Em]singing when the [D]evening [G]comes
+
+[Chorus]
+Bless the [G]Lord O my [C]soul
+Worship His [Em]holy [D]name
+Sing like [G]never before, O my [C]soul
+I'll worship Your [Em]holy [D]name`
+    },
+    {
+        id: 5,
+        number: 5,
+        title: "Holy Spirit",
+        artist: "Francesca Battistelli",
+        originalKey: "D",
+        tempo: 70,
+        category: "Praise",
+        lyrics: `[Verse 1]
+There's nothing worth [D]more that could ever come [A]close
+No thing could com[Bm]pare through Your [G]love
+I'm comfort[D]able, so [A]comfortable inside Your [Bm]love
+I'm [G]home, I'm [D]home
+
+[Chorus]
+Holy [D]Spirit, You are [A]welcome here
+Come flood this [Bm]place and fill the [G]atmosphere
+Your [D]glory, God, is what our [A]hearts long for
+To be [Bm]overcome by Your [G]presence, Lord`
+    },
+    {
+        id: 6,
+        number: 6,
+        title: "What a Beautiful Name",
+        artist: "Hillsong Worship",
+        originalKey: "D",
+        tempo: 68,
+        category: "Modern",
+        lyrics: `[Verse 1]
+You were the [D]Word at the beginning
+One with [A]God the Lord Most [Bm]High
+Your hidden [G]glory in [A]creation
+Now re[D]vealed in Jesus [A]Christ
+
+[Chorus]
+What a beautiful [D]Name it is, what a beautiful [A]Name it is
+The Name of [Bm]Jesus Christ my [G]King
+What a beautiful [D]Name it is, nothing com[A]pares to this
+What a beautiful [Bm]Name it is, the [G]Name of Jesus`
+    },
+    {
+        id: 7,
+        number: 7,
+        title: "Praise the Father, Praise the Son",
+        artist: "Keith Getty",
+        originalKey: "C",
+        tempo: 66,
+        category: "Hymn",
+        lyrics: `[Verse 1]
+O [C]gracious God, accept our [F]praise
+Your Spirit [G]helps us to ex[C]alt Your name
+For [C]You are God, the God of [F]all
+The [G]only God worthy of our [C]praise
+
+[Chorus]
+[C]Praise the Father, [F]praise the [C]Son
+[C]Praise the Spirit, [F]three in [G]one
+[C]God of glory, [F]God of [C]light
+[G]Praise be Yours a[F]lways, [C]day and [G]night`
+    },
+    {
+        id: 8,
+        number: 8,
+        title: "Here I Am to Worship",
+        artist: "Tim Hughes",
+        originalKey: "D",
+        tempo: 76,
+        category: "Modern",
+        lyrics: `[Verse 1]
+[D]Light of the world, You stepped [Bm]down into dark[G]ness
+Opened my [D]eyes, let me [Asus4]see
+[D]Beauty that made this heart [Bm]adore [G]You
+Hope of a [D]life spent with [Asus4]You
+
+[Chorus]
+So here I [G]am to worship, here I [D]am to bow down
+Here I [Em]am to say that You're [D]my God
+And You're al[C]together lovely, al[G]together worthy
+Al[Em]together wonderful to [D]me`
+    }
+];
+
+// ===== CHORD TRANSPOSITION =====
+const noteOrder = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const noteOrderFlat = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+function transposeChord(chord, semitones) {
+    if (semitones === 0) return chord;
+    const match = chord.match(/^([A-G])(#|b)?(.*)$/);
+    if (!match) return chord;
+    const [, note, accidental, rest] = match;
+    let idx = noteOrder.indexOf(note);
+    if (idx === -1) idx = noteOrderFlat.indexOf(note);
+    if (idx === -1) return chord;
+    let newIdx = (idx + semitones + 12) % 12;
+    return noteOrder[newIdx] + rest;
+}
+
+function transposeLyrics(lyrics, semitones) {
+    if (semitones === 0) return lyrics;
+    return lyrics.replace(/\[([A-G][#b]?[a-z0-9]*)\]/g, (match, chord) => {
+        return '[' + transposeChord(chord, semitones) + ']';
+    });
+}
+
+function formatLyrics(lyrics, semitones = 0) {
+    const transposed = semitones !== 0 ? transposeLyrics(lyrics, semitones) : lyrics;
+    const lines = transposed.split('\n');
+    return lines.map(line => {
+        if (line.match(/^\[Verse|Chorus|Bridge|Tag|Intro|Outro|Interlude/i)) {
+            return `<div class="verse-label">${line}</div>`;
+        }
+        return line.replace(/\[([^\]]+)\]/g, '<span class="chord">$1</span>');
+    }).join('\n');
+}
+
+// ===== STATE =====
+let currentFilter = 'all';
+let currentSearch = '';
+let currentSong = null;
+let currentTranspose = 0;
+
+// ===== RENDER =====
+const songGrid = document.getElementById('songGrid');
+const songCount = document.getElementById('songCount');
+
+function renderSongs() {
+    const filtered = songs.filter(song => {
+        const matchCategory = currentFilter === 'all' || song.category === currentFilter;
+        const matchSearch = !currentSearch || 
+            song.title.toLowerCase().includes(currentSearch) ||
+            song.artist.toLowerCase().includes(currentSearch) ||
+            song.lyrics.toLowerCase().includes(currentSearch);
+        return matchCategory && matchSearch;
+    });
+
+    songCount.textContent = filtered.length;
+
+    if (filtered.length === 0) {
+        songGrid.innerHTML = `
+            <div class="empty-state" style="grid-column: 1/-1">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                <h3>No songs found</h3>
+                <p>Try adjusting your search or filter</p>
+            </div>
+        `;
+        return;
+    }
+
+    songGrid.innerHTML = filtered.map((song, i) => `
+        <div class="song-card" data-id="${song.id}" style="animation-delay: ${i * 0.04}s">
+            <div class="song-card-header">
+                <div class="song-number">${String(song.number).padStart(2, '0')}</div>
+                <div class="song-category">${song.category}</div>
+            </div>
+            <div class="song-title">${song.title}</div>
+            <div class="song-artist">${song.artist}</div>
+            <div class="song-card-footer">
+                <div class="song-key">
+                    Key: <span class="key-badge">${song.originalKey}</span>
+                </div>
+                <div class="song-tempo">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    ${song.tempo} BPM
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    document.querySelectorAll('.song-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const id = parseInt(card.dataset.id);
+            openDetail(id);
+        });
+    });
+}
+
+// ===== DETAIL =====
+function openDetail(id) {
+    currentSong = songs.find(s => s.id === id);
+    currentTranspose = 0;
+    if (!currentSong) return;
+
+    document.getElementById('detailTitle').textContent = currentSong.title;
+    document.getElementById('detailArtist').textContent = currentSong.artist;
+    document.getElementById('detailCategory').textContent = currentSong.category;
+    document.getElementById('detailTempo').textContent = currentSong.tempo + ' BPM';
+    document.getElementById('keyDisplay').textContent = currentSong.originalKey;
+    document.getElementById('detailLyrics').innerHTML = formatLyrics(currentSong.lyrics);
+
+    document.getElementById('detailOverlay').classList.add('open');
+}
+
+function updateTranspose() {
+    if (!currentSong) return;
+    const newKey = transposeChord(currentSong.originalKey, currentTranspose);
+    document.getElementById('keyDisplay').textContent = newKey;
+    document.getElementById('detailLyrics').innerHTML = formatLyrics(currentSong.lyrics, currentTranspose);
+}
+
+document.getElementById('transposeUp').addEventListener('click', () => {
+    currentTranspose++;
+    updateTranspose();
+});
+
+document.getElementById('transposeDown').addEventListener('click', () => {
+    currentTranspose--;
+    updateTranspose();
+});
+
+document.getElementById('closeDetail').addEventListener('click', () => {
+    document.getElementById('detailOverlay').classList.remove('open');
+});
+
+document.getElementById('detailOverlay').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) {
+        e.currentTarget.classList.remove('open');
+    }
+});
+
+// ===== SEARCH =====
+document.getElementById('searchInput').addEventListener('input', (e) => {
+    currentSearch = e.target.value.toLowerCase();
+    renderSongs();
+});
+
+// ===== FILTER =====
+const filterBtn = document.getElementById('filterBtn');
+const filterMenu = document.getElementById('filterMenu');
+const filterLabel = document.getElementById('filterLabel');
+
+filterBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    filterMenu.classList.toggle('open');
+});
+
+document.addEventListener('click', () => filterMenu.classList.remove('open'));
+
+document.querySelectorAll('.filter-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+        document.querySelectorAll('.filter-option').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        currentFilter = opt.dataset.category;
+        filterLabel.textContent = opt.textContent;
+        filterMenu.classList.remove('open');
+        renderSongs();
+    });
+});
+
+// ===== ADD SONG MODAL =====
+const addModal = document.getElementById('addModal');
+
+document.getElementById('addBtn').addEventListener('click', () => addModal.classList.add('open'));
+document.getElementById('closeModal').addEventListener('click', () => addModal.classList.remove('open'));
+document.getElementById('cancelAdd').addEventListener('click', () => addModal.classList.remove('open'));
+addModal.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) addModal.classList.remove('open');
+});
+
+document.getElementById('saveSong').addEventListener('click', () => {
+    const title = document.getElementById('newTitle').value.trim();
+    const artist = document.getElementById('newArtist').value.trim();
+    const key = document.getElementById('newKey').value.trim() || 'C';
+    const tempo = parseInt(document.getElementById('newTempo').value) || 80;
+    const category = document.getElementById('newCategory').value;
+    const lyrics = document.getElementById('newLyrics').value.trim();
+
+    if (!title) {
+        showToast('Please enter a song title', 'danger');
+        return;
+    }
+
+    const newId = Math.max(...songs.map(s => s.id)) + 1;
+    const newSong = {
+        id: newId,
+        number: newId,
+        title, artist,
+        originalKey: key,
+        tempo, category, lyrics
+    };
+    songs.push(newSong);
+    
+    addModal.classList.remove('open');
+    document.getElementById('newTitle').value = '';
+    document.getElementById('newArtist').value = '';
+    document.getElementById('newKey').value = '';
+    document.getElementById('newTempo').value = '';
+    document.getElementById('newLyrics').value = '';
+    
+    renderSongs();
+    showToast('Song added successfully', 'success');
+});
+
+// ===== TOAST =====
+function showToast(text, type = 'success') {
+    const toast = document.getElementById('toast');
+    toast.querySelector('#toastText').textContent = text;
+    toast.className = 'toast show ' + type;
+    setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+// ===== INIT =====
+renderSongs();
+</script>
+</body>
+</html>

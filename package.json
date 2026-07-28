@@ -1,0 +1,13 @@
+{
+  "name": "selah-mobile-root",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "npm --prefix selah-app run dev",
+    "build": "npm --prefix selah-app run build",
+    "preview": "npm --prefix selah-app run preview",
+    "android:sync": "npm --prefix selah-app run android:sync",
+    "android:open": "npm --prefix selah-app run android:open",
+    "android:run": "npm --prefix selah-app run android:run"
+  }
+}

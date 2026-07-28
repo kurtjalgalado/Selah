@@ -1,0 +1,16 @@
+{
+  "appId": "com.selah.worship",
+  "appName": "Selah",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#0F1115",
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "backgroundColor": "#0F1115",
+      "androidSplashResourceName": "splash"
+    }
+  }
+}
