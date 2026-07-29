@@ -1,0 +1,67 @@
+name: iOS Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'selah-app/src/**'
+      - 'selah-app/package.json'
+      - 'selah-app/capacitor.config.json'
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: selah-app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: selah-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web assets
+        run: npm run build
+
+      - name: Add iOS platform
+        run: npx cap add ios || true  # skip if already exists
+
+      - name: Sync iOS
+        run: npx cap sync ios
+
+      - name: Build iOS (simulator)
+        run: |
+          xcodebuild build \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            | tail -20
+
+      - name: Archive build artifact
+        run: |
+          xcodebuild build \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO
+          # Zip the .app for download
+          cd build/Build/Products/Debug-iphonesimulator
+          zip -r ../../../../Selah-iOS-Simulator.zip App.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: selah-ios-simulator
+          path: selah-app/Selah-iOS-Simulator.zip
+          retention-days: 30
