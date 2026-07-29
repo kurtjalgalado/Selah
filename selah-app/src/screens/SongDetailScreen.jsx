@@ -1,12 +1,16 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, songDB, setlistDB } from '../db/dexie';
+import { db, songDB, setlistDB, getSongByIdOrTitle } from '../db/dexie';
 import { KEYS, getKeyIndex, semitonesBetween, transposeLyrics, transposeChord } from '../utils/chords';
 import { parseLyrics, isChordLine, separateChords } from '../utils/lyrics';
 import { ChevronLeft, Plus, Minus, ListPlus, Trash2, Edit3, Clock, Tag, Share, Play, Pause, ChevronUp, SlidersHorizontal, X } from 'lucide-react';
 
+import { useAuth } from '../auth/AuthContext';
+import { deleteSongFromSupabase, pushSetlistToSupabase } from '../supabase/sync';
+
 export default function SongDetailScreen() {
+    const { user } = useAuth();
     const { id } = useParams();
     const navigate = useNavigate();
     const [transposeAmount, setTransposeAmount] = useState(0);
@@ -19,8 +23,9 @@ export default function SongDetailScreen() {
     const [isAutoScrolling, setIsAutoScrolling] = useState(false);
     const [scrollSpeed, setScrollSpeed] = useState(2); // 1x to 4x
 
-    const songId = isNaN(Number(id)) ? id : Number(id);
-    const song = useLiveQuery(() => db.songs.get(songId), [id]);
+    const song = useLiveQuery(async () => {
+        return await getSongByIdOrTitle(id);
+    }, [id]);
     const setlists = useLiveQuery(() => db.setlists.toArray(), [], []);
 
     const lyrics = song?.lyrics || '';
@@ -85,6 +90,7 @@ export default function SongDetailScreen() {
     const handleDelete = async () => {
         if (confirm(`Delete "${song.title}"?`)) {
             await songDB.delete(song.id);
+            await deleteSongFromSupabase(song.id, user);
             navigate('/library');
         }
     };
@@ -94,6 +100,7 @@ export default function SongDetailScreen() {
         if (setlist) {
             const songIds = [...(setlist.songIds || []), song.id];
             await setlistDB.update(setlistId, { songIds });
+            await pushSetlistToSupabase({ ...setlist, songIds }, user);
         }
         setShowAddToSetlist(false);
         navigate('/setlists');
@@ -334,8 +341,7 @@ export default function SongDetailScreen() {
                         <div key={sIdx} className="mb-6">
                             {/* Section Label */}
                             <div className="flex items-center gap-2 mb-2">
-                                <span className={`text-xs font-bold uppercase tracking-wider ${section.type === 'chorus' ? 'text-accent' : 'text-textmuted'
-                                    }`}>
+                                <span className={`text-xs font-bold uppercase tracking-wider ${section.type === 'chorus' ? 'text-accent' : 'text-textmuted'}`}>
                                     {section.label}
                                 </span>
                                 <div className="flex-1 h-px bg-white/5" />
@@ -348,20 +354,26 @@ export default function SongDetailScreen() {
                                 if (!showChords || !isChordLine(line)) {
                                     // Pure lyrics line (chords OFF or line has no chords)
                                     return (
-                                        <p key={lIdx} className="text-text-primary whitespace-pre-wrap leading-relaxed">
+                                        <p key={lIdx} className="text-text-primary whitespace-pre-wrap leading-relaxed" style={{ fontSize: `${fontSize}px` }}>
                                             {cleanLyricLine || line || '\u00A0'}
                                         </p>
                                     );
                                 }
 
-                                // Chord line - display with chords above lyrics
+                                // Chord line - display with chords above lyrics (scalable for stage viewing from a distance)
                                 const { chordLine, lyricLine } = separateChords(line);
                                 return (
-                                    <div key={lIdx} className="mb-1.5">
-                                        <pre className="text-accent text-xs whitespace-pre-wrap font-mono leading-tight">
+                                    <div key={lIdx} className="mb-2">
+                                        <pre
+                                            className="text-accent font-mono font-bold whitespace-pre-wrap leading-tight tracking-wide"
+                                            style={{ fontSize: `${Math.round(fontSize * 1.05)}px` }}
+                                        >
                                             {chordLine}
                                         </pre>
-                                        <p className="text-text-primary whitespace-pre-wrap leading-snug">
+                                        <p
+                                            className="text-text-primary whitespace-pre-wrap leading-snug"
+                                            style={{ fontSize: `${fontSize}px` }}
+                                        >
                                             {lyricLine || '\u00A0'}
                                         </p>
                                     </div>

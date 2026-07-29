@@ -40,6 +40,34 @@ export const songDB = {
         .toArray(),
 };
 
+export async function getSongByIdOrTitle(id) {
+    if (!id && id !== 0) return null;
+    const numId = Number(id);
+    let s;
+    if (!isNaN(numId)) {
+        s = await db.songs.get(numId);
+    }
+    if (!s) {
+        s = await db.songs.get(String(id));
+    }
+    if (!s) {
+        const allSongs = await db.songs.toArray();
+        s = allSongs.find(item => String(item.id) === String(id) || item.title?.toLowerCase() === String(id).toLowerCase());
+    }
+    if (!s) {
+        // Fallback to local seed array scraped_songs.json
+        if (!isNaN(numId) && numId > 0 && numId <= scrapedSongs.length) {
+            s = { id: numId, ...scrapedSongs[numId - 1] };
+        } else {
+            const indexFound = scrapedSongs.findIndex(item => item.title?.toLowerCase() === String(id).toLowerCase());
+            if (indexFound !== -1) {
+                s = { id: indexFound + 1, ...scrapedSongs[indexFound] };
+            }
+        }
+    }
+    return s || null;
+}
+
 export const setlistDB = {
     getAll: () => db.setlists.toArray(),
     getById: (id) => db.setlists.get(id),

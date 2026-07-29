@@ -1,16 +1,62 @@
-# React + Vite
+# Selah — Worship Planner
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A mobile-first worship setlist planner for churches and worship teams. Built with React + Vite, deployed as an Android app via Capacitor.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Song Library** — 200+ pre-seeded worship songs with chords, lyrics, and metadata from selah.jfcm-missions.com
+- **Setlist Builder** — Create worship setlists with drag-and-drop song ordering, per-song key transposition, and A4 print charts
+- **Live Setlist Player** — Full-screen scrollable chord chart for stage use with adjustable font size
+- **Chord Transposition** — Real-time key transposition with Nashville/standard chord notation
+- **A4 Print / PDF** — 2-songs-per-page formatted charts with print-optimized CSS (works on Android via `PrintManager`)
+- **Supabase Sync** — Setlists, keys, dates, and arrangement sync across devices via Supabase Realtime + periodic background sync
+- **Pull to Refresh** — Manual database sync from Supabase
+- **Google Auth** — Login via Supabase Google OAuth
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Layer | Tech |
+|-------|------|
+| Frontend | React 19, Vite, Tailwind CSS |
+| Local DB | Dexie.js (IndexedDB) |
+| Cloud Sync | Supabase (Postgres, Realtime, Auth) |
+| Mobile | Capacitor 7 (Android) |
+| Icons | Lucide React |
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+cd selah-app
+npm install
+npm run dev
+```
+
+### Android Build
+
+```bash
+npm run build
+npx cap sync android
+cd android && ./gradlew assembleDebug
+```
+
+APK output: `android/app/build/outputs/apk/debug/app-debug.apk`
+
+## Project Structure
+
+```
+selah-app/
+├── src/
+│   ├── screens/          # SetlistScreen, LibraryScreen, SongDetailScreen, SetlistPlayerScreen
+│   ├── components/       # PullToRefresh
+│   ├── auth/             # AuthContext (Supabase Google OAuth)
+│   ├── db/               # Dexie schema, scraped_songs.json seed
+│   ├── supabase/         # client.js, sync.js (realtime + background sync)
+│   └── utils/            # chords.js, lyrics.js
+├── android/              # Capacitor Android project
+├── public/               # Icons, favicon
+└── supabase_schema.sql   # Database schema
+```
+
+## License
+
+Private — JFCM Missions

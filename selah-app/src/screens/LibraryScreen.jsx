@@ -5,6 +5,8 @@ import { db, songDB, setlistDB } from '../db/dexie';
 import { KEYS, getKeyIndex, semitonesBetween, transposeLyrics } from '../utils/chords';
 import { Search, Plus, Music, Clock, Tag, ChevronRight, Trash2, ListPlus, LogOut, Library, Calendar, ArrowUpDown, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { pushSongToSupabase, pushSetlistToSupabase, discreetBackgroundSync } from '../supabase/sync';
+import PullToRefresh from '../components/PullToRefresh';
 
 const CATEGORIES = ['All', 'Fast', 'Slow', 'English', 'Tagalog'];
 
@@ -54,175 +56,179 @@ export default function LibraryScreen() {
     };
 
     return (
-        <div className="min-h-screen bg-primary pb-24">
-            {/* ===== HEADER ===== */}
-            <header className="glass sticky top-0 z-10 border-b border-white/5">
-                <div className="px-5 pt-12 pb-4">
-                    {/* Top Row */}
-                    <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-3">
-                            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-accent to-yellow-300 flex items-center justify-center shadow-lg shadow-accent/20">
-                                <Music className="w-6 h-6 text-primary" strokeWidth={2} />
+        <PullToRefresh onRefresh={discreetBackgroundSync}>
+            <div className="min-h-screen bg-primary pb-24">
+                {/* ===== HEADER ===== */}
+                <header className="glass sticky top-0 z-10 border-b border-white/5">
+                    <div className="px-5 pt-12 pb-4">
+                        {/* Top Row */}
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-accent to-yellow-300 flex items-center justify-center shadow-lg shadow-accent/20">
+                                    <Music className="w-6 h-6 text-primary" strokeWidth={2} />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-serif font-bold text-accent leading-none">Selah</h1>
+                                    <p className="text-[10px] text-textmuted tracking-widest uppercase mt-0.5">Worship Planner</p>
+                                </div>
                             </div>
-                            <div>
-                                <h1 className="text-2xl font-serif font-bold text-accent leading-none">Selah</h1>
-                                <p className="text-[10px] text-textmuted tracking-widest uppercase mt-0.5">Worship Planner</p>
+
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => navigate('/setlists')}
+                                    className="px-3.5 py-2.5 rounded-xl bg-accent/15 border border-accent/30 text-accent hover:bg-accent/25 active:scale-95 text-xs font-bold flex items-center gap-2 shadow-md shadow-accent/10 transition-all min-h-[44px]"
+                                    title="Song Lineup"
+                                >
+                                    <Calendar className="w-4 h-4 text-accent" />
+                                    <span>Song Lineup</span>
+                                </button>
+                                {user ? (
+                                    <button
+                                        onClick={handleSignOut}
+                                        className="w-11 h-11 rounded-xl bg-secondary border border-white/5 flex items-center justify-center text-textmuted hover:text-danger transition-colors min-w-[44px]"
+                                    >
+                                        <LogOut className="w-5 h-5" />
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => navigate('/login')}
+                                        className="px-4 py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-accent text-xs font-semibold hover:bg-accent/20 transition-colors min-h-[44px]"
+                                    >
+                                        Sign In
+                                    </button>
+                                )}
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-3">
+                        {/* Title */}
+                        <h2 className="text-3xl font-bold mb-4">Song Library</h2>
+
+                        {/* Search & Sort Controls */}
+                        <div className="flex gap-2 mb-4">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-textmuted" />
+                                <input
+                                    type="text"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    placeholder="Search songs or artists..."
+                                    className="w-full bg-secondary border border-white/5 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-accent transition-colors min-h-[44px]"
+                                />
+                            </div>
                             <button
-                                onClick={() => navigate('/setlists')}
-                                className="w-10 h-10 rounded-lg bg-secondary border border-white/5 flex items-center justify-center text-textmuted hover:text-accent transition-colors"
+                                onClick={() => setSortOrder(s => s === 'asc' ? 'desc' : 'asc')}
+                                className="px-3.5 rounded-xl bg-secondary border border-white/10 flex items-center gap-2 text-xs font-bold text-accent active:bg-white/10 shrink-0 min-h-[44px]"
+                                title="Sort by Title"
                             >
-                                <Calendar className="w-5 h-5" />
+                                <ArrowUpDown className="w-4 h-4 text-accent" />
+                                <span>{sortOrder === 'asc' ? 'Title A–Z' : 'Title Z–A'}</span>
                             </button>
-                            {user ? (
+                        </div>
+
+                        {/* Filter Pills */}
+                        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                            {CATEGORIES.map(cat => (
                                 <button
-                                    onClick={handleSignOut}
-                                    className="w-10 h-10 rounded-lg bg-secondary border border-white/5 flex items-center justify-center text-textmuted hover:text-danger transition-colors"
+                                    key={cat}
+                                    onClick={() => setActiveFilter(cat)}
+                                    className={`px-4 py-2 rounded-full text-xs font-medium border whitespace-nowrap transition-colors min-h-[36px] ${activeFilter === cat
+                                            ? 'bg-accent text-primary border-accent font-bold'
+                                            : 'border-white/5 text-textmuted hover:border-accent'
+                                        }`}
                                 >
-                                    <LogOut className="w-5 h-5" />
+                                    {cat}
                                 </button>
-                            ) : (
-                                <button
-                                    onClick={() => navigate('/login')}
-                                    className="px-3.5 py-2 rounded-lg bg-accent/10 border border-accent/30 text-accent text-xs font-semibold hover:bg-accent/20 transition-colors"
-                                >
-                                    Sign In
-                                </button>
-                            )}
+                            ))}
                         </div>
                     </div>
+                </header>
 
-                    {/* Title */}
-                    <h2 className="text-3xl font-bold mb-4">Song Library</h2>
-
-                    {/* Search & Sort Controls */}
-                    <div className="flex gap-2 mb-4">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-textmuted" />
-                            <input
-                                type="text"
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Search songs or artists..."
-                                className="w-full bg-secondary border border-white/5 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-accent transition-colors"
+                {/* ===== SONG LIST ===== */}
+                <div className="px-5 py-4 space-y-3">
+                    {filteredSongs.length === 0 ? (
+                        <div className="text-center py-20">
+                            <Music className="w-12 h-12 mx-auto text-textmuted/30 mb-4" />
+                            <p className="text-textmuted text-sm">No songs found</p>
+                        </div>
+                    ) : (
+                        filteredSongs.map(song => (
+                            <SongCard
+                                key={song.id}
+                                song={song}
+                                onClick={() => navigate(`/song/${song.id}`)}
+                                onQuickAdd={(e) => {
+                                    e.stopPropagation();
+                                    setQuickAddSong(song);
+                                }}
                             />
-                        </div>
-                        <button
-                            onClick={() => setSortOrder(s => s === 'asc' ? 'desc' : 'asc')}
-                            className="px-3.5 rounded-xl bg-secondary border border-white/10 flex items-center gap-2 text-xs font-bold text-accent active:bg-white/10 shrink-0"
-                            title="Sort by Title"
-                        >
-                            <ArrowUpDown className="w-4 h-4 text-accent" />
-                            <span>{sortOrder === 'asc' ? 'Title A–Z' : 'Title Z–A'}</span>
-                        </button>
-                    </div>
-
-                    {/* Filter Pills */}
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                        {CATEGORIES.map(cat => (
-                            <button
-                                key={cat}
-                                onClick={() => setActiveFilter(cat)}
-                                className={`px-4 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap transition-colors ${activeFilter === cat
-                                        ? 'bg-accent text-primary border-accent'
-                                        : 'border-white/5 text-textmuted hover:border-accent'
-                                    }`}
-                            >
-                                {cat}
-                            </button>
-                        ))}
-                    </div>
+                        ))
+                    )}
                 </div>
-            </header>
 
-            {/* ===== SONG LIST ===== */}
-            <div className="px-5 py-4 space-y-3">
-                {filteredSongs.length === 0 ? (
-                    <div className="text-center py-20">
-                        <Music className="w-12 h-12 mx-auto text-textmuted/30 mb-4" />
-                        <p className="text-textmuted text-sm">No songs found</p>
+                {/* ===== FAB ===== */}
+                <button
+                    onClick={() => setShowAddModal(true)}
+                    className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-accent text-primary flex items-center justify-center shadow-lg shadow-accent/40 glow-accent z-20 min-w-[56px] min-h-[56px]"
+                >
+                    <Plus className="w-7 h-7" strokeWidth={3} />
+                </button>
+
+                {/* ===== ADD SONG MODAL ===== */}
+                {showAddModal && <AddSongModal onClose={() => setShowAddModal(false)} />}
+
+                {/* ===== QUICK ADD TO SETLIST MODAL ===== */}
+                {quickAddSong && (
+                    <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-4">
+                        <div className="bg-elevated rounded-t-3xl sm:rounded-2xl border border-white/10 w-full max-w-sm shadow-2xl animate-slideUp">
+                            <div className="flex justify-between items-center px-6 py-4 border-b border-white/10">
+                                <div>
+                                    <h3 className="text-base font-bold">Add to Setlist</h3>
+                                    <p className="text-xs text-accent truncate">{quickAddSong.title}</p>
+                                </div>
+                                <button onClick={() => setQuickAddSong(null)} className="text-textmuted active:text-white p-1">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
+                                {(!setlists || setlists.length === 0) ? (
+                                    <div className="text-center py-6">
+                                        <p className="text-textmuted text-xs mb-3">No setlists created yet</p>
+                                        <button
+                                            onClick={() => { setQuickAddSong(null); navigate('/setlists'); }}
+                                            className="px-4 py-2 bg-accent text-primary rounded-xl text-xs font-bold"
+                                        >
+                                            Create New Setlist
+                                        </button>
+                                    </div>
+                                ) : (
+                                    setlists.map(setlist => (
+                                        <button
+                                            key={setlist.id}
+                                            onClick={async () => {
+                                                const songIds = setlist.songIds || [];
+                                                if (!songIds.includes(quickAddSong.id)) {
+                                                    const updatedIds = [...songIds, quickAddSong.id];
+                                                    await setlistDB.update(setlist.id, { songIds: updatedIds });
+                                                    await pushSetlistToSupabase({ ...setlist, songIds: updatedIds }, user);
+                                                }
+                                                setQuickAddSong(null);
+                                            }}
+                                            className="w-full p-3 rounded-xl bg-secondary border border-white/5 flex items-center justify-between text-left hover:border-accent active:bg-white/10 transition-colors"
+                                        >
+                                            <div>
+                                                <p className="font-medium text-white text-sm">{setlist.title}</p>
+                                                <p className="text-xs text-textmuted">{setlist.date || 'No date'} • {setlist.songIds?.length || 0} songs</p>
+                                            </div>
+                                            <Plus className="w-4 h-4 text-accent" />
+                                        </button>
+                                    ))
+                                )}
+                            </div>
+                        </div>
                     </div>
-                ) : (
-                    filteredSongs.map(song => (
-                        <SongCard
-                            key={song.id}
-                            song={song}
-                            onClick={() => navigate(`/song/${song.id}`)}
-                            onQuickAdd={(e) => {
-                                e.stopPropagation();
-                                setQuickAddSong(song);
-                            }}
-                        />
-                    ))
                 )}
             </div>
-
-            {/* ===== FAB ===== */}
-            <button
-                onClick={() => setShowAddModal(true)}
-                className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-accent text-primary flex items-center justify-center shadow-lg shadow-accent/40 glow-accent z-20"
-            >
-                <Plus className="w-6 h-6" strokeWidth={3} />
-            </button>
-
-            {/* ===== ADD SONG MODAL ===== */}
-            {showAddModal && <AddSongModal onClose={() => setShowAddModal(false)} />}
-
-            {/* ===== QUICK ADD TO SETLIST MODAL ===== */}
-            {quickAddSong && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-4">
-                    <div className="bg-elevated rounded-t-3xl sm:rounded-2xl border border-white/10 w-full max-w-sm shadow-2xl animate-slideUp">
-                        <div className="flex justify-between items-center px-6 py-4 border-b border-white/10">
-                            <div>
-                                <h3 className="text-base font-bold">Add to Setlist</h3>
-                                <p className="text-xs text-accent truncate">{quickAddSong.title}</p>
-                            </div>
-                            <button onClick={() => setQuickAddSong(null)} className="text-textmuted active:text-white p-1">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
-                            {(!setlists || setlists.length === 0) ? (
-                                <div className="text-center py-6">
-                                    <p className="text-textmuted text-xs mb-3">No setlists created yet</p>
-                                    <button
-                                        onClick={() => { setQuickAddSong(null); navigate('/setlists'); }}
-                                        className="px-4 py-2 bg-accent text-primary rounded-xl text-xs font-bold"
-                                    >
-                                        Create New Setlist
-                                    </button>
-                                </div>
-                            ) : (
-                                setlists.map(setlist => (
-                                    <button
-                                        key={setlist.id}
-                                        onClick={async () => {
-                                            const songIds = setlist.songIds || [];
-                                            if (!songIds.includes(quickAddSong.id)) {
-                                                await setlistDB.update(setlist.id, {
-                                                    songIds: [...songIds, quickAddSong.id]
-                                                });
-                                            }
-                                            setQuickAddSong(null);
-                                        }}
-                                        className="w-full p-3 rounded-xl bg-secondary border border-white/5 flex items-center justify-between text-left hover:border-accent active:bg-white/10 transition-colors"
-                                    >
-                                        <div>
-                                            <p className="font-medium text-white text-sm">{setlist.title}</p>
-                                            <p className="text-xs text-textmuted">{setlist.date || 'No date'} • {setlist.songIds?.length || 0} songs</p>
-                                        </div>
-                                        <Plus className="w-4 h-4 text-accent" />
-                                    </button>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+        </PullToRefresh>
     );
 }
 
@@ -298,6 +304,7 @@ function SongCard({ song, onClick, onQuickAdd }) {
 
 // ── Add Song Modal ──
 function AddSongModal({ onClose }) {
+    const { user } = useAuth();
     const [form, setForm] = useState({
         title: '',
         artist: '',
@@ -310,11 +317,14 @@ function AddSongModal({ onClose }) {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        await songDB.add({
+        const newSong = {
+            id: crypto.randomUUID(),
             ...form,
             tempo: parseInt(form.tempo),
             dateAdded: new Date().toISOString(),
-        });
+        };
+        await songDB.add(newSong);
+        await pushSongToSupabase(newSong, user);
         onClose();
     };
 
