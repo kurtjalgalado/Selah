@@ -1,46 +1,77 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db, songDB, setlistDB } from '../db/dexie';
-import { KEYS, getKeyIndex, semitonesBetween, transposeLyrics } from '../utils/chords';
-import { Search, Plus, Music, Clock, Tag, ChevronRight, Trash2, ListPlus, LogOut, Library, Calendar, ArrowUpDown, X } from 'lucide-react';
+import { songDB, setlistDB } from '../db/dexie';
+import { useSongCache } from '../context/SongCacheContext';
+import { KEYS, getKeyIndex } from '../utils/chords';
+import { Search, Plus, Music, Clock, ChevronRight, Trash2, ListPlus, LogOut, Calendar, ArrowUpDown, X, Menu, Edit3, User, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { UIContext } from '../App';
 import { pushSongToSupabase, pushSetlistToSupabase, discreetBackgroundSync } from '../supabase/sync';
 import PullToRefresh from '../components/PullToRefresh';
-
-const CATEGORIES = ['All', 'Fast', 'Slow', 'English', 'Tagalog'];
+import AppLogo from '../components/AppLogo';
+import EditSongModal from '../components/EditSongModal';
+import { LibrarySkeletonCards } from '../components/SkeletonLoader';
 
 export default function LibraryScreen() {
     const navigate = useNavigate();
     const { user, signOut } = useAuth();
+    const { openSidebar } = useContext(UIContext);
     const [search, setSearch] = useState('');
-    const [activeFilter, setActiveFilter] = useState('All');
+
+    // Separate independent filters for Tempo & Language
+    const [tempoFilter, setTempoFilter] = useState('All'); // 'All' | 'Fast' | 'Slow'
+    const [languageFilter, setLanguageFilter] = useState('All'); // 'All' | 'Tagalog' | 'English'
+    const [showFilters, setShowFilters] = useState(false); // Collapsible filters hidden by default
+
     const [sortOrder, setSortOrder] = useState('asc'); // 'asc' = Title A-Z, 'desc' = Title Z-A
     const [showAddModal, setShowAddModal] = useState(false);
     const [quickAddSong, setQuickAddSong] = useState(null);
+    const [editingSong, setEditingSong] = useState(null);
 
-    // Live query from Dexie
-    const songs = useLiveQuery(() => db.songs.toArray(), [], []);
-    const setlists = useLiveQuery(() => db.setlists.toArray(), [], []);
+    // Check if any filter is active
+    const isFilterActive = languageFilter !== 'All' || tempoFilter !== 'All';
 
-    // Filtered & Sorted songs
+    // Load from SongCache
+    const { songs, setlists, loading } = useSongCache();
+
+    // Filtered & Sorted songs with deduplication
     const filteredSongs = useMemo(() => {
-        if (!songs) return [];
-        const result = songs.filter(song => {
+        if (!songs || songs.length === 0) return [];
+
+        // Deduplicate songs by ID/title to prevent duplicate React keys
+        const uniqueMap = new Map();
+        for (const s of songs) {
+            const key = `${String(s.id).toLowerCase()}-${(s.title || '').toLowerCase().trim()}`;
+            if (!uniqueMap.has(key)) {
+                uniqueMap.set(key, s);
+            }
+        }
+        const uniqueSongs = Array.from(uniqueMap.values());
+
+        const result = uniqueSongs.filter(song => {
             const songCategory = (song.category || '').toLowerCase();
             const songLanguage = (song.language || '').toLowerCase();
-            const songTags = (song.tags || []).map(t => t.toLowerCase());
+            const songTags = (song.tags || []).map(t => String(t).toLowerCase());
 
-            const matchesFilter = activeFilter === 'All' ||
-                songCategory === activeFilter.toLowerCase() ||
-                songLanguage === activeFilter.toLowerCase() ||
-                songTags.includes(activeFilter.toLowerCase()) ||
-                songCategory.includes(activeFilter.toLowerCase());
+            const isTagalog = songLanguage.includes('tagalog') || songCategory.includes('tagalog') || songTags.includes('tagalog');
+            const isEnglish = songLanguage.includes('english') || songCategory.includes('english') || songTags.includes('english');
+            const isFast = songCategory.includes('fast') || songTags.includes('fast') || (song.tempo && song.tempo >= 100);
+            const isSlow = songCategory.includes('slow') || songTags.includes('slow') || (song.tempo && song.tempo < 100);
+
+            // Match language
+            let matchesLanguage = true;
+            if (languageFilter === 'Tagalog') matchesLanguage = isTagalog;
+            else if (languageFilter === 'English') matchesLanguage = isEnglish;
+
+            // Match tempo
+            let matchesTempo = true;
+            if (tempoFilter === 'Fast') matchesTempo = isFast;
+            else if (tempoFilter === 'Slow') matchesTempo = isSlow;
 
             const matchesSearch =
                 song.title.toLowerCase().includes(search.toLowerCase()) ||
                 song.artist.toLowerCase().includes(search.toLowerCase());
-            return matchesFilter && matchesSearch;
+            return matchesLanguage && matchesTempo && matchesSearch;
         });
 
         return result.sort((a, b) => {
@@ -48,114 +79,164 @@ export default function LibraryScreen() {
             const titleB = b.title.toLowerCase();
             return sortOrder === 'asc' ? titleA.localeCompare(titleB) : titleB.localeCompare(titleA);
         });
-    }, [songs, activeFilter, search, sortOrder]);
+    }, [songs, languageFilter, tempoFilter, search, sortOrder]);
 
     const handleSignOut = async () => {
         await signOut();
         navigate('/login');
     };
 
+    const handleResetFilters = () => {
+        setLanguageFilter('All');
+        setTempoFilter('All');
+    };
+
     return (
         <PullToRefresh onRefresh={discreetBackgroundSync}>
             <div className="min-h-screen bg-primary pb-24">
                 {/* ===== HEADER ===== */}
-                <header className="glass sticky top-0 z-10 border-b border-white/5">
-                    <div className="px-5 pt-12 pb-4">
-                        {/* Top Row */}
-                        <div className="flex items-center justify-between mb-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-accent to-yellow-300 flex items-center justify-center shadow-lg shadow-accent/20">
-                                    <Music className="w-6 h-6 text-primary" strokeWidth={2} />
-                                </div>
-                                <div>
-                                    <h1 className="text-2xl font-serif font-bold text-accent leading-none">Selah</h1>
-                                    <p className="text-[10px] text-textmuted tracking-widest uppercase mt-0.5">Worship Planner</p>
-                                </div>
-                            </div>
+                <header className="glass sticky top-0 z-10 border-b border-white/5 shadow-md">
+                    <div className="px-5 pt-10 pb-4">
+                        {/* Top Row: App Logo (Click opens sidebar) + Song Lineup Action */}
+                        <div className="flex items-center justify-between mb-4">
+                            {/* App Logo opens Sidebar on click */}
+                            <AppLogo size="md" showText={true} onClick={openSidebar} />
 
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => navigate('/setlists')}
-                                    className="px-3.5 py-2.5 rounded-xl bg-accent/15 border border-accent/30 text-accent hover:bg-accent/25 active:scale-95 text-xs font-bold flex items-center gap-2 shadow-md shadow-accent/10 transition-all min-h-[44px]"
+                                    className="px-4 py-2.5 rounded-xl bg-accent/15 border border-accent/30 text-accent hover:bg-accent/25 active:scale-95 text-xs font-bold flex items-center gap-2 shadow-md shadow-accent/10 transition-all min-h-[44px]"
                                     title="Song Lineup"
                                 >
                                     <Calendar className="w-4 h-4 text-accent" />
                                     <span>Song Lineup</span>
                                 </button>
-                                {user ? (
-                                    <button
-                                        onClick={handleSignOut}
-                                        className="w-11 h-11 rounded-xl bg-secondary border border-white/5 flex items-center justify-center text-textmuted hover:text-danger transition-colors min-w-[44px]"
-                                    >
-                                        <LogOut className="w-5 h-5" />
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={() => navigate('/login')}
-                                        className="px-4 py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-accent text-xs font-semibold hover:bg-accent/20 transition-colors min-h-[44px]"
-                                    >
-                                        Sign In
-                                    </button>
-                                )}
                             </div>
                         </div>
 
-                        {/* Title */}
-                        <h2 className="text-3xl font-bold mb-4">Song Library</h2>
-
-                        {/* Search & Sort Controls */}
-                        <div className="flex gap-2 mb-4">
+                        {/* Search, Filter Toggle & Sort Controls */}
+                        <div className="flex gap-2">
                             <div className="relative flex-1">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-textmuted" />
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-textmuted" />
                                 <input
                                     type="text"
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
                                     placeholder="Search songs or artists..."
-                                    className="w-full bg-secondary border border-white/5 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-accent transition-colors min-h-[44px]"
+                                    className="w-full bg-secondary border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-accent transition-colors text-white min-h-[44px]"
                                 />
                             </div>
+
+                            {/* Filter Button with Active Indicator */}
+                            <button
+                                onClick={() => setShowFilters(f => !f)}
+                                className={`px-3.5 rounded-xl border flex items-center gap-2 text-xs font-bold transition-all shrink-0 min-h-[44px] relative active:scale-95 ${
+                                    showFilters || isFilterActive
+                                        ? 'bg-accent/20 border-accent text-accent shadow-md shadow-accent/10'
+                                        : 'bg-secondary border-white/10 text-textmuted hover:text-white'
+                                }`}
+                                title="Filter Songs"
+                            >
+                                <SlidersHorizontal className="w-4 h-4" />
+                                <span className="hidden xs:inline">Filter</span>
+                                {isFilterActive && (
+                                    <span className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" />
+                                )}
+                            </button>
+
+                            {/* Sort Button */}
                             <button
                                 onClick={() => setSortOrder(s => s === 'asc' ? 'desc' : 'asc')}
-                                className="px-3.5 rounded-xl bg-secondary border border-white/10 flex items-center gap-2 text-xs font-bold text-accent active:bg-white/10 shrink-0 min-h-[44px]"
+                                className="px-3.5 rounded-xl bg-secondary border border-white/10 flex items-center gap-1.5 text-xs font-bold text-accent active:bg-white/10 shrink-0 min-h-[44px]"
                                 title="Sort by Title"
                             >
                                 <ArrowUpDown className="w-4 h-4 text-accent" />
-                                <span>{sortOrder === 'asc' ? 'Title A–Z' : 'Title Z–A'}</span>
+                                <span>{sortOrder === 'asc' ? 'A–Z' : 'Z–A'}</span>
                             </button>
                         </div>
 
-                        {/* Filter Pills */}
-                        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                            {CATEGORIES.map(cat => (
-                                <button
-                                    key={cat}
-                                    onClick={() => setActiveFilter(cat)}
-                                    className={`px-4 py-2 rounded-full text-xs font-medium border whitespace-nowrap transition-colors min-h-[36px] ${activeFilter === cat
-                                            ? 'bg-accent text-primary border-accent font-bold'
-                                            : 'border-white/5 text-textmuted hover:border-accent'
-                                        }`}
-                                >
-                                    {cat}
-                                </button>
-                            ))}
-                        </div>
+                        {/* Collapsible Dual Filter Dropdown Panel */}
+                        {showFilters && (
+                            <div className="mt-3 pt-3 border-t border-white/10 space-y-3.5 animate-fadeIn">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-white tracking-wide flex items-center gap-1.5">
+                                        <SlidersHorizontal className="w-3.5 h-3.5 text-accent" /> Filter Options
+                                    </span>
+                                    {isFilterActive && (
+                                        <button
+                                            onClick={handleResetFilters}
+                                            className="text-[11px] font-semibold text-accent hover:underline flex items-center gap-1 active:scale-95"
+                                        >
+                                            <RotateCcw className="w-3 h-3" /> Reset
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Language Filter Pills */}
+                                <div className="space-y-1.5">
+                                    <span className="text-[10px] font-bold text-textmuted uppercase tracking-wider block">Language</span>
+                                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                                        {['All', 'Tagalog', 'English'].map(lang => (
+                                            <button
+                                                key={lang}
+                                                onClick={() => setLanguageFilter(lang)}
+                                                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border whitespace-nowrap transition-all min-h-[36px] ${
+                                                    languageFilter === lang
+                                                        ? 'bg-accent text-primary border-accent font-bold shadow-md shadow-accent/20'
+                                                        : 'border-white/10 text-textmuted hover:border-accent hover:text-white bg-secondary/60'
+                                                }`}
+                                            >
+                                                {lang}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Tempo Filter Pills */}
+                                <div className="space-y-1.5">
+                                    <span className="text-[10px] font-bold text-textmuted uppercase tracking-wider block">Tempo</span>
+                                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                                        {['All', 'Fast', 'Slow'].map(tempo => (
+                                            <button
+                                                key={tempo}
+                                                onClick={() => setTempoFilter(tempo)}
+                                                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border whitespace-nowrap transition-all min-h-[36px] ${
+                                                    tempoFilter === tempo
+                                                        ? 'bg-accent text-primary border-accent font-bold shadow-md shadow-accent/20'
+                                                        : 'border-white/10 text-textmuted hover:border-accent hover:text-white bg-secondary/60'
+                                                }`}
+                                            >
+                                                {tempo}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </header>
 
                 {/* ===== SONG LIST ===== */}
                 <div className="px-5 py-4 space-y-3">
-                    {filteredSongs.length === 0 ? (
-                        <div className="text-center py-20">
+                    {(!songs || songs.length === 0) ? (
+                        <LibrarySkeletonCards />
+                    ) : filteredSongs.length === 0 ? (
+                        <div className="text-center py-20 bg-elevated/40 rounded-3xl border border-white/5 p-8">
                             <Music className="w-12 h-12 mx-auto text-textmuted/30 mb-4" />
-                            <p className="text-textmuted text-sm">No songs found</p>
+                            <p className="text-textmuted text-sm font-medium">
+                                No songs found {search ? `for "${search}"` : `matching the selected filters`}
+                            </p>
                         </div>
                     ) : (
-                        filteredSongs.map(song => (
+                        filteredSongs.map((song, idx) => (
                             <SongCard
-                                key={song.id}
+                                key={`${song.id}-${idx}`}
                                 song={song}
                                 onClick={() => navigate(`/song/${song.id}`)}
+                                onEdit={(e) => {
+                                    e.stopPropagation();
+                                    setEditingSong(song);
+                                }}
                                 onQuickAdd={(e) => {
                                     e.stopPropagation();
                                     setQuickAddSong(song);
@@ -168,7 +249,8 @@ export default function LibraryScreen() {
                 {/* ===== FAB ===== */}
                 <button
                     onClick={() => setShowAddModal(true)}
-                    className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-accent text-primary flex items-center justify-center shadow-lg shadow-accent/40 glow-accent z-20 min-w-[56px] min-h-[56px]"
+                    className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-accent text-primary flex items-center justify-center shadow-lg shadow-accent/40 glow-accent z-20 min-w-[56px] min-h-[56px] active:scale-95 transition-transform"
+                    title="Add New Song"
                 >
                     <Plus className="w-7 h-7" strokeWidth={3} />
                 </button>
@@ -176,9 +258,17 @@ export default function LibraryScreen() {
                 {/* ===== ADD SONG MODAL ===== */}
                 {showAddModal && <AddSongModal onClose={() => setShowAddModal(false)} />}
 
+                {/* ===== EDIT SONG MODAL ===== */}
+                {editingSong && (
+                    <EditSongModal
+                        song={editingSong}
+                        onClose={() => setEditingSong(null)}
+                    />
+                )}
+
                 {/* ===== QUICK ADD TO SETLIST MODAL ===== */}
                 {quickAddSong && (
-                    <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-4">
+                    <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-4">
                         <div className="bg-elevated rounded-t-3xl sm:rounded-2xl border border-white/10 w-full max-w-sm shadow-2xl animate-slideUp">
                             <div className="flex justify-between items-center px-6 py-4 border-b border-white/10">
                                 <div>
@@ -233,7 +323,7 @@ export default function LibraryScreen() {
 }
 
 // ── Song Card Component ──
-function SongCard({ song, onClick, onQuickAdd }) {
+function SongCard({ song, onClick, onEdit, onQuickAdd }) {
     const [currentKey, setCurrentKey] = useState(song.originalKey || song.currentKey || 'C');
 
     const transpose = (direction) => {
@@ -245,7 +335,7 @@ function SongCard({ song, onClick, onQuickAdd }) {
 
     return (
         <div
-            className="bg-elevated rounded-xl border border-white/5 p-4 active:scale-[0.98] transition-transform"
+            className="bg-elevated rounded-2xl border border-white/5 p-4 active:scale-[0.98] hover:border-white/15 transition-all shadow-md"
             onClick={onClick}
         >
             <div className="flex items-center gap-3">
@@ -256,20 +346,29 @@ function SongCard({ song, onClick, onQuickAdd }) {
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-white truncate text-sm">{song.title}</h3>
+                    <h3 className="font-bold text-white truncate text-sm leading-snug">{song.title}</h3>
                     <p className="text-xs text-textmuted truncate">{song.artist}</p>
                     <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] px-2 py-0.5 bg-white/5 rounded-full text-accent font-medium">
+                        <span className="text-[10px] px-2.5 py-0.5 bg-accent/10 border border-accent/20 rounded-full text-accent font-semibold">
                             {song.category}
                         </span>
                         <span className="text-[10px] text-textmuted flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> {song.tempo}
+                            <Clock className="w-3 h-3" /> {song.tempo} BPM
                         </span>
                     </div>
                 </div>
 
-                {/* Controls & Key Display */}
-                <div className="flex items-center gap-2 shrink-0">
+                {/* Actions: Edit, Quick Add, Transpose Key */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Edit Song Button */}
+                    <button
+                        onClick={onEdit}
+                        className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-textmuted hover:text-white flex items-center justify-center active:scale-95 transition-all"
+                        title="Edit Song Lyrics & Chords"
+                    >
+                        <Edit3 className="w-4 h-4" />
+                    </button>
+
                     {/* Quick Add Button */}
                     <button
                         onClick={onQuickAdd}
@@ -279,7 +378,8 @@ function SongCard({ song, onClick, onQuickAdd }) {
                         <ListPlus className="w-4 h-4" />
                     </button>
 
-                    <div className="flex items-center gap-1 bg-secondary/80 rounded-lg p-0.5 border border-white/5">
+                    {/* Key Transposer */}
+                    <div className="flex items-center gap-0.5 bg-secondary/80 rounded-lg p-0.5 border border-white/5">
                         <button
                             onClick={(e) => { e.stopPropagation(); transpose(-1); }}
                             className="w-6 h-6 rounded bg-white/5 active:bg-white/10 flex items-center justify-center text-textmuted"
@@ -311,7 +411,7 @@ function AddSongModal({ onClose }) {
         originalKey: 'C',
         currentKey: 'C',
         tempo: 80,
-        category: 'Modern',
+        category: 'Fast',
         lyrics: '',
     });
 
@@ -320,7 +420,7 @@ function AddSongModal({ onClose }) {
         const newSong = {
             id: crypto.randomUUID(),
             ...form,
-            tempo: parseInt(form.tempo),
+            tempo: parseInt(form.tempo) || 80,
             dateAdded: new Date().toISOString(),
         };
         await songDB.add(newSong);
@@ -329,12 +429,12 @@ function AddSongModal({ onClose }) {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-            <div className="bg-elevated rounded-t-2xl sm:rounded-2xl border border-white/5 w-full max-w-lg shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-elevated flex justify-between items-center px-6 py-4 border-b border-white/5">
-                    <h3 className="text-lg font-bold font-serif">Add New Song</h3>
-                    <button onClick={onClose} className="text-textmuted active:text-white">
-                        ✕
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 animate-fadeIn">
+            <div className="bg-elevated rounded-t-2xl sm:rounded-2xl border border-white/10 w-full max-w-lg shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto">
+                <div className="sticky top-0 bg-elevated flex justify-between items-center px-6 py-4 border-b border-white/10 z-10">
+                    <h3 className="text-lg font-bold font-serif text-accent">Add New Song</h3>
+                    <button onClick={onClose} className="text-textmuted active:text-white p-1">
+                        <X className="w-5 h-5" />
                     </button>
                 </div>
 
@@ -346,7 +446,7 @@ function AddSongModal({ onClose }) {
                             value={form.title}
                             onChange={(e) => setForm({ ...form, title: e.target.value })}
                             placeholder="King of Kings"
-                            className="w-full bg-secondary border border-white/5 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent"
+                            className="w-full bg-secondary border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-white"
                             required
                         />
                     </div>
@@ -358,7 +458,7 @@ function AddSongModal({ onClose }) {
                             value={form.artist}
                             onChange={(e) => setForm({ ...form, artist: e.target.value })}
                             placeholder="Hillsong Worship"
-                            className="w-full bg-secondary border border-white/5 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent"
+                            className="w-full bg-secondary border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-white"
                             required
                         />
                     </div>
@@ -369,7 +469,7 @@ function AddSongModal({ onClose }) {
                             <select
                                 value={form.originalKey}
                                 onChange={(e) => setForm({ ...form, originalKey: e.target.value, currentKey: e.target.value })}
-                                className="w-full bg-secondary border border-white/5 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-accent"
+                                className="w-full bg-secondary border border-white/10 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent text-white"
                             >
                                 {KEYS.map(k => <option key={k} value={k}>{k}</option>)}
                             </select>
@@ -381,7 +481,7 @@ function AddSongModal({ onClose }) {
                                 type="number"
                                 value={form.tempo}
                                 onChange={(e) => setForm({ ...form, tempo: e.target.value })}
-                                className="w-full bg-secondary border border-white/5 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-accent"
+                                className="w-full bg-secondary border border-white/10 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent text-white"
                                 required
                             />
                         </div>
@@ -391,32 +491,32 @@ function AddSongModal({ onClose }) {
                             <select
                                 value={form.category}
                                 onChange={(e) => setForm({ ...form, category: e.target.value })}
-                                className="w-full bg-secondary border border-white/5 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-accent"
+                                className="w-full bg-secondary border border-white/10 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent text-white"
                             >
-                                <option>Modern</option>
-                                <option>Hymn</option>
-                                <option>Praise</option>
-                                <option>Chorus</option>
+                                <option value="Fast">Fast</option>
+                                <option value="Slow">Slow</option>
+                                <option value="English">English</option>
+                                <option value="Tagalog">Tagalog</option>
                             </select>
                         </div>
                     </div>
 
                     <div>
-                        <label className="block text-xs font-medium text-textmuted mb-1.5">Lyrics</label>
+                        <label className="block text-xs font-medium text-textmuted mb-1.5">Lyrics & Chords</label>
                         <textarea
                             value={form.lyrics}
                             onChange={(e) => setForm({ ...form, lyrics: e.target.value })}
                             rows="6"
-                            placeholder="[Verse 1]&#10;Lyrics here...&#10;&#10;[Chorus]&#10;Chorus lyrics..."
-                            className="w-full bg-secondary border border-white/5 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent resize-none font-mono"
+                            placeholder="[Verse 1]&#10;[G]Praise the [C]Lord..."
+                            className="w-full bg-secondary border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent resize-none font-mono text-white"
                         />
                     </div>
 
                     <div className="flex gap-3 pt-2">
-                        <button type="button" onClick={onClose} className="flex-1 py-2.5 text-sm font-medium border border-white/5 rounded-lg active:bg-white/5">
+                        <button type="button" onClick={onClose} className="flex-1 py-2.5 text-sm font-medium border border-white/10 rounded-xl active:bg-white/5 text-textmuted">
                             Cancel
                         </button>
-                        <button type="submit" className="flex-1 py-2.5 text-sm font-bold bg-accent text-primary rounded-lg active:bg-yellow-300">
+                        <button type="submit" className="flex-1 py-2.5 text-sm font-bold bg-accent text-primary rounded-xl active:bg-accent/90 shadow-lg shadow-accent/20">
                             Save Song
                         </button>
                     </div>

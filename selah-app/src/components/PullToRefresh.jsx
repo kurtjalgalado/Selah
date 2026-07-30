@@ -57,42 +57,39 @@ export default function PullToRefresh({ onRefresh, children }) {
             onTouchEnd={handleTouchEnd}
             className="relative min-h-screen"
         >
-            {/* Pull to Refresh Header Indicator */}
-            <div
-                className="w-full flex items-center justify-center transition-all duration-200 overflow-hidden pointer-events-none"
-                style={{
-                    height: `${pullDistance}px`,
-                    opacity: pullDistance > 10 ? 1 : 0
-                }}
-            >
-                <div className="flex items-center gap-2 text-xs font-bold text-accent bg-elevated/90 px-4 py-2 rounded-full border border-white/10 shadow-lg">
-                    <RefreshCw
-                        className={`w-4 h-4 text-accent transition-transform ${
-                            isRefreshing ? 'animate-spin' : ''
-                        }`}
-                        style={{
-                            transform: isRefreshing ? undefined : `rotate(${pullDistance * 3}deg)`
-                        }}
-                    />
-                    <span>
-                        {isRefreshing
-                            ? 'Syncing with cloud...'
-                            : pullDistance >= THRESHOLD
-                            ? 'Release to sync'
-                            : 'Pull to refresh'}
-                    </span>
+            {/* Pull to Refresh Indicator — fixed overlay below header */}
+            {(pullDistance > 0 || isRefreshing) && (
+                <div
+                    className="fixed left-0 right-0 flex justify-center pointer-events-none transition-all duration-200"
+                    style={{
+                        top: '80px',
+                        zIndex: 5,
+                        opacity: pullDistance > 10 || isRefreshing ? 1 : 0,
+                        transform: `translateY(${Math.min(pullDistance, THRESHOLD) * 0.5}px)`
+                    }}
+                >
+                    <div className="flex items-center gap-2 text-xs font-bold text-accent bg-elevated/90 px-4 py-2 rounded-full border border-white/10 shadow-lg backdrop-blur-sm">
+                        <RefreshCw
+                            className={`w-4 h-4 text-accent transition-transform ${
+                                isRefreshing ? 'animate-spin' : ''
+                            }`}
+                            style={{
+                                transform: isRefreshing ? undefined : `rotate(${pullDistance * 3}deg)`
+                            }}
+                        />
+                        <span>
+                            {isRefreshing
+                                ? 'Syncing with cloud...'
+                                : pullDistance >= THRESHOLD
+                                ? 'Release to sync'
+                                : 'Pull to refresh'}
+                        </span>
+                    </div>
                 </div>
-            </div>
+            )}
 
-            {/* Main Content */}
-            <div
-                className="transition-transform duration-200"
-                style={{
-                    transform: isRefreshing ? `translateY(${THRESHOLD / 2}px)` : 'none'
-                }}
-            >
-                {children}
-            </div>
+            {/* Main Content — no transform, renders normally */}
+            {children}
         </div>
     );
 }

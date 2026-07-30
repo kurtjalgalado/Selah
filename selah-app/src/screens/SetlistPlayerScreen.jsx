@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db, setlistDB, getSongByIdOrTitle } from '../db/dexie';
+import { setlistDB, getSongByIdOrTitle } from '../db/dexie';
+import { useSongCache } from '../context/SongCacheContext';
 import { KEYS, getKeyIndex, semitonesBetween, transposeLyrics } from '../utils/chords';
 import { parseLyrics, isChordLine, separateChords } from '../utils/lyrics';
 import { useAuth } from '../auth/AuthContext';
@@ -24,9 +24,9 @@ export default function SetlistPlayerScreen() {
 
     const songRefs = useRef({});
 
-    // Fetch setlist from Dexie
-    const setlist = useLiveQuery(() => db.setlists.get(isNaN(Number(id)) ? id : Number(id)), [id]);
-    const allSongs = useLiveQuery(() => db.songs.toArray(), [], []);
+    // Fetch setlist from cache
+    const { songs: allSongs, setlists } = useSongCache();
+    const setlist = setlists?.find(s => s.id == id);
 
     // Live state of setlist songs with fallback to local seed
     const [loadedSongs, setLoadedSongs] = useState([]);

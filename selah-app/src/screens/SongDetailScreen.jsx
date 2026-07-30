@@ -1,32 +1,35 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db, songDB, setlistDB, getSongByIdOrTitle } from '../db/dexie';
+import { songDB, setlistDB, getSongByIdOrTitle } from '../db/dexie';
+import { useSongCache } from '../context/SongCacheContext';
 import { KEYS, getKeyIndex, semitonesBetween, transposeLyrics, transposeChord } from '../utils/chords';
 import { parseLyrics, isChordLine, separateChords } from '../utils/lyrics';
 import { ChevronLeft, Plus, Minus, ListPlus, Trash2, Edit3, Clock, Tag, Share, Play, Pause, ChevronUp, SlidersHorizontal, X } from 'lucide-react';
-
 import { useAuth } from '../auth/AuthContext';
+import { UIContext } from '../App';
 import { deleteSongFromSupabase, pushSetlistToSupabase } from '../supabase/sync';
+import EditSongModal from '../components/EditSongModal';
+import { SongDetailSkeleton } from '../components/SkeletonLoader';
 
 export default function SongDetailScreen() {
     const { user } = useAuth();
     const { id } = useParams();
     const navigate = useNavigate();
+    const { openProfileSettings } = useContext(UIContext);
+
     const [transposeAmount, setTransposeAmount] = useState(0);
     const [showChords, setShowChords] = useState(true);
     const [fontSize, setFontSize] = useState(16);
     const [showAddToSetlist, setShowAddToSetlist] = useState(false);
     const [showOptionsModal, setShowOptionsModal] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
 
     // Auto-scroll player state
     const [isAutoScrolling, setIsAutoScrolling] = useState(false);
     const [scrollSpeed, setScrollSpeed] = useState(2); // 1x to 4x
 
-    const song = useLiveQuery(async () => {
-        return await getSongByIdOrTitle(id);
-    }, [id]);
-    const setlists = useLiveQuery(() => db.setlists.toArray(), [], []);
+    const { songs, setlists } = useSongCache();
+    const song = songs?.find(s => s.id == id);
 
     const lyrics = song?.lyrics || '';
     const originalKey = song?.originalKey || 'C';
@@ -73,6 +76,10 @@ export default function SongDetailScreen() {
         );
     }
 
+    if (song === undefined) {
+        return <SongDetailSkeleton />;
+    }
+
     // Not found state after query completes
     if (song === null) {
         return (
@@ -96,7 +103,7 @@ export default function SongDetailScreen() {
     };
 
     const handleAddToSetlist = async (setlistId) => {
-        const setlist = await db.setlists.get(setlistId);
+        const setlist = setlists?.find(s => s.id === setlistId);
         if (setlist) {
             const songIds = [...(setlist.songIds || []), song.id];
             await setlistDB.update(setlistId, { songIds });
@@ -135,13 +142,22 @@ export default function SongDetailScreen() {
                     </button>
 
                     <div className="flex-1 min-w-0 px-1">
-                        <h1 className="text-base font-bold truncate leading-tight">{song.title}</h1>
+                        <h1 className="text-base font-bold truncate leading-tight text-white">{song.title}</h1>
                         <p className="text-xs text-textmuted truncate mt-0.5">
                             {song.artist} • <span className="text-accent font-medium">{song.category}</span>
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        {/* Edit Song Button */}
+                        <button
+                            onClick={() => setIsEditing(true)}
+                            className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 text-accent flex items-center justify-center active:scale-95 transition-all"
+                            title="Edit Song Lyrics & Chords"
+                        >
+                            <Edit3 className="w-4.5 h-4.5" />
+                        </button>
+
                         <button
                             onClick={() => setShowAddToSetlist(true)}
                             className="w-10 h-10 rounded-xl bg-secondary border border-white/10 flex items-center justify-center text-textmuted active:text-accent"
@@ -261,6 +277,17 @@ export default function SongDetailScreen() {
                         </div>
 
                         <div className="p-6 space-y-5">
+                            {/* Edit Song Button inside Display Options */}
+                            <button
+                                onClick={() => {
+                                    setShowOptionsModal(false);
+                                    setIsEditing(true);
+                                }}
+                                className="w-full py-3 px-4 rounded-xl bg-accent/15 border border-accent/30 text-accent font-bold text-xs flex items-center justify-center gap-2 active:scale-98"
+                            >
+                                <Edit3 className="w-4 h-4" /> Edit Song Lyrics & Chords
+                            </button>
+
                             {/* Font Size Adjuster */}
                             <div>
                                 <label className="block text-xs font-bold text-textmuted uppercase tracking-wider mb-2">
@@ -310,7 +337,7 @@ export default function SongDetailScreen() {
                             <div className="grid grid-cols-2 gap-3 pt-2">
                                 <button
                                     onClick={handleShare}
-                                    className="py-3 px-4 rounded-xl border border-white/10 text-xs font-bold flex items-center justify-center gap-2 active:bg-white/5"
+                                    className="py-3 px-4 rounded-xl border border-white/10 text-xs font-bold flex items-center justify-center gap-2 active:bg-white/5 text-white"
                                 >
                                     <Share className="w-4 h-4 text-accent" /> Share Lyrics
                                 </button>
@@ -326,7 +353,7 @@ export default function SongDetailScreen() {
                 </div>
             )}
 
-            {/* ===== LYRICS ===== */}
+            {/* ===== LYRICS DISPLAY ===== */}
             <div className="px-5 py-6" style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}>
                 {sections.length === 0 ? (
                     displayLyrics ? (
@@ -352,7 +379,7 @@ export default function SongDetailScreen() {
                                 const cleanLyricLine = line.replace(/\[[^\]]+\]/g, '').trim();
 
                                 if (!showChords || !isChordLine(line)) {
-                                    // Pure lyrics line (chords OFF or line has no chords)
+                                    // Pure lyrics line
                                     return (
                                         <p key={lIdx} className="text-text-primary whitespace-pre-wrap leading-relaxed" style={{ fontSize: `${fontSize}px` }}>
                                             {cleanLyricLine || line || '\u00A0'}
@@ -360,7 +387,7 @@ export default function SongDetailScreen() {
                                     );
                                 }
 
-                                // Chord line - display with chords above lyrics (scalable for stage viewing from a distance)
+                                // Chord line
                                 const { chordLine, lyricLine } = separateChords(line);
                                 return (
                                     <div key={lIdx} className="mb-2">
@@ -384,6 +411,14 @@ export default function SongDetailScreen() {
                 )}
             </div>
 
+            {/* EDIT SONG MODAL */}
+            {isEditing && (
+                <EditSongModal
+                    song={song}
+                    onClose={() => setIsEditing(false)}
+                />
+            )}
+
             {/* ===== ADD TO SETLIST MODAL ===== */}
             {showAddToSetlist && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
@@ -401,7 +436,7 @@ export default function SongDetailScreen() {
                                         onClick={() => handleAddToSetlist(sl.id)}
                                         className="w-full text-left p-3 bg-secondary rounded-lg border border-white/5 active:border-accent transition-colors"
                                     >
-                                        <p className="font-medium text-sm">{sl.title}</p>
+                                        <p className="font-medium text-sm text-white">{sl.title}</p>
                                         <p className="text-xs text-textmuted mt-0.5">
                                             {sl.date || 'No date'} • {sl.songIds?.length || 0} songs
                                         </p>
@@ -412,7 +447,7 @@ export default function SongDetailScreen() {
                         <div className="p-4 border-t border-white/5">
                             <button
                                 onClick={() => setShowAddToSetlist(false)}
-                                className="w-full py-2.5 text-sm border border-white/5 rounded-lg active:bg-white/5"
+                                className="w-full py-2.5 text-sm border border-white/5 rounded-lg active:bg-white/5 text-textmuted"
                             >
                                 Cancel
                             </button>

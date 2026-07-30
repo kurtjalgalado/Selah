@@ -4,22 +4,25 @@
 -- https://supabase.com/dashboard/project/qplhtuxmbjyjvxzakkae/sql/new
 -- ========================================================
 
--- 1. Drop existing tables if present (COMPLETE RESET)
-DROP TABLE IF EXISTS setlists CASCADE;
-DROP TABLE IF EXISTS songs CASCADE;
-DROP TABLE IF EXISTS profiles CASCADE;
-
--- 2. Create Profiles table
-CREATE TABLE profiles (
+-- 1. Create or Update Profiles table
+CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY,
   username TEXT,
   email TEXT,
   role TEXT DEFAULT 'worship_leader',
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  quick_pin TEXT,
+  accent_color TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Create Songs table
-CREATE TABLE songs (
+-- Add columns if profiles table already exists
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS quick_pin TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS accent_color TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- 2. Create Songs table
+CREATE TABLE IF NOT EXISTS songs (
   id TEXT PRIMARY KEY,
   user_id UUID,
   title TEXT NOT NULL,
@@ -32,8 +35,8 @@ CREATE TABLE songs (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Create Setlists table
-CREATE TABLE setlists (
+-- 3. Create Setlists table
+CREATE TABLE IF NOT EXISTS setlists (
   id TEXT PRIMARY KEY,
   user_id UUID,
   title TEXT NOT NULL,
@@ -46,22 +49,26 @@ CREATE TABLE setlists (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Grant explicit table permissions to anon and authenticated roles
+-- 4. Grant explicit table permissions to anon and authenticated roles
 GRANT ALL ON TABLE profiles TO anon, authenticated, service_role;
 GRANT ALL ON TABLE songs TO anon, authenticated, service_role;
 GRANT ALL ON TABLE setlists TO anon, authenticated, service_role;
 
--- 6. Disable Row Level Security (RLS) for open team sync
+-- 5. Disable Row Level Security (RLS) for open team sync
 ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
 ALTER TABLE songs DISABLE ROW LEVEL SECURITY;
 ALTER TABLE setlists DISABLE ROW LEVEL SECURITY;
 
--- 7. Create fallback permissive policies
-CREATE POLICY "Public profiles access" ON profiles FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Public songs access" ON songs FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Public setlists access" ON setlists FOR ALL USING (true) WITH CHECK (true);
-
--- 8. Enable Supabase Realtime for collaborative updates across all devices
-ALTER PUBLICATION supabase_realtime ADD TABLE profiles;
-ALTER PUBLICATION supabase_realtime ADD TABLE songs;
-ALTER PUBLICATION supabase_realtime ADD TABLE setlists;
+-- 6. Enable Supabase Realtime for collaborative updates across all devices
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'profiles') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE profiles;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'songs') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE songs;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'setlists') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE setlists;
+  END IF;
+END $$;

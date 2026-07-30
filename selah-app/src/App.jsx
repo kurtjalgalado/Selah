@@ -2,8 +2,13 @@ import { useEffect, useState, createContext, lazy, Suspense } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { App as CapApp } from '@capacitor/app';
 import { useAuth } from './auth/AuthContext';
-import { db, seedDatabase, songDB, setlistDB } from './db/dexie';
+import { db, seedDatabase } from './db/dexie';
 import Toast from './components/Toast';
+import ErrorBoundary from './components/ErrorBoundary';
+import { SongCacheProvider } from './context/SongCacheContext';
+import AppLogo from './components/AppLogo';
+import Sidebar from './components/Sidebar';
+import ProfileSettingsModal from './components/ProfileSettingsModal';
 
 // Lazy-loaded screen modules
 const LoginScreen = lazy(() => import('./screens/LoginScreen'));
@@ -13,17 +18,13 @@ const SongDetailScreen = lazy(() => import('./screens/SongDetailScreen'));
 const SetlistScreen = lazy(() => import('./screens/SetlistScreen'));
 const SetlistPlayerScreen = lazy(() => import('./screens/SetlistPlayerScreen'));
 
+import { LibrarySkeleton } from './components/SkeletonLoader';
+
 export const ToastContext = createContext(() => { });
+export const UIContext = createContext({ openSidebar: () => {}, openProfileSettings: () => {} });
 
 function RouteLoader() {
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-primary">
-      <div className="text-center">
-        <h1 className="text-3xl font-serif font-bold text-accent animate-pulse">Selah</h1>
-        <p className="text-textmuted text-xs mt-2 tracking-widest uppercase">Loading screen...</p>
-      </div>
-    </div>
-  );
+  return <LibrarySkeleton />;
 }
 
 function BackButtonHandler() {
@@ -50,7 +51,7 @@ function BackButtonHandler() {
   if (!showExitModal) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fadeIn">
       <div className="bg-elevated border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4 text-center">
         <h3 className="text-xl font-serif font-bold text-white">Exit Selah?</h3>
         <p className="text-textmuted text-sm">Are you sure you want to exit the application?</p>
@@ -63,7 +64,7 @@ function BackButtonHandler() {
           </button>
           <button
             onClick={() => CapApp.exitApp()}
-            className="flex-1 py-2.5 px-4 text-sm font-semibold text-black bg-accent hover:bg-accent/90 rounded-xl transition shadow-lg shadow-accent/20"
+            className="flex-1 py-2.5 px-4 text-sm font-semibold text-primary bg-accent hover:bg-accent/90 rounded-xl transition shadow-lg shadow-accent/20"
           >
             Exit
           </button>
@@ -77,8 +78,10 @@ export default function App() {
   const { user, loading } = useAuth();
   const [toast, setToast] = useState(null);
   const [seeded, setSeeded] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
 
-  // Seed database on first launch
+  // Seed database on mount
   useEffect(() => {
     seedDatabase().then(() => setSeeded(true));
   }, []);
@@ -88,39 +91,56 @@ export default function App() {
     setToast({ message, type, id: Date.now() });
   };
 
+  const uiContextValue = {
+    openSidebar: () => setIsSidebarOpen(true),
+    openProfileSettings: () => setIsProfileSettingsOpen(true),
+  };
+
   if (loading || !seeded) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-primary">
-        <div className="text-center">
-          <h1 className="text-4xl font-serif font-bold text-accent animate-pulse">Selah</h1>
-          <p className="text-textmuted text-sm mt-2 tracking-widest uppercase">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LibrarySkeleton />;
   }
 
   return (
+    <ErrorBoundary>
     <HashRouter>
       <BackButtonHandler />
       <ToastContext.Provider value={showToast}>
-        <Suspense fallback={<RouteLoader />}>
-          <Routes>
-            {/* Auth routes */}
-            <Route path="/login" element={<LoginScreen />} />
-            <Route path="/register" element={<RegisterScreen />} />
+        <UIContext.Provider value={uiContextValue}>
+          <SongCacheProvider>
+          <Suspense fallback={<RouteLoader />}>
+            <Routes>
+              {/* Auth routes */}
+              <Route path="/login" element={<LoginScreen />} />
+              <Route path="/register" element={<RegisterScreen />} />
 
-            {/* App routes (guest/offline access enabled) */}
-            <Route path="/library" element={<LibraryScreen />} />
-            <Route path="/song/:id" element={<SongDetailScreen />} />
-            <Route path="/setlists" element={<SetlistScreen />} />
-            <Route path="/setlist-player/:id" element={<SetlistPlayerScreen />} />
+              {/* App routes */}
+              <Route path="/library" element={<LibraryScreen />} />
+              <Route path="/song/:id" element={<SongDetailScreen />} />
+              <Route path="/setlists" element={<SetlistScreen />} />
+              <Route path="/setlist-player/:id" element={<SetlistPlayerScreen />} />
 
-            {/* Default redirect to library */}
-            <Route path="*" element={<Navigate to="/library" />} />
-          </Routes>
-        </Suspense>
-        {toast && <Toast key={toast.id} {...toast} onClose={() => setToast(null)} />}
+              {/* Default redirect to library */}
+              <Route path="*" element={<Navigate to="/library" />} />
+            </Routes>
+          </Suspense>
+          </SongCacheProvider>
+
+          {/* Global Sidebar & Profile Settings Drawer */}
+          <Sidebar
+            isOpen={isSidebarOpen}
+            onClose={() => setIsSidebarOpen(false)}
+            onOpenProfileSettings={() => setIsProfileSettingsOpen(true)}
+          />
+
+          <ProfileSettingsModal
+            isOpen={isProfileSettingsOpen}
+            onClose={() => setIsProfileSettingsOpen(false)}
+          />
+
+          {toast && <Toast key={toast.id} {...toast} onClose={() => setToast(null)} />}
+        </UIContext.Provider>
       </ToastContext.Provider>
     </HashRouter>
+    </ErrorBoundary>
   );
 }

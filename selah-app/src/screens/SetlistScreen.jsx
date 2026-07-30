@@ -1,23 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db, setlistDB, getSongByIdOrTitle } from '../db/dexie';
+import { setlistDB, getSongByIdOrTitle } from '../db/dexie';
+import { useSongCache } from '../context/SongCacheContext';
 import { useAuth } from '../auth/AuthContext';
 import { pushSetlistToSupabase, deleteSetlistFromSupabase, discreetBackgroundSync } from '../supabase/sync';
 import PullToRefresh from '../components/PullToRefresh';
 import { KEYS, getKeyIndex, semitonesBetween, transposeLyrics } from '../utils/chords';
 import { parseLyrics, isChordLine, separateChords } from '../utils/lyrics';
-import {
-    Plus, Calendar, ChevronLeft, Trash2, Music, GripVertical,
-    X, Clock, Search, Layers, Play, Printer, Check, ChevronUp, ChevronDown, User, Save
-} from 'lucide-react';
+import { Menu, Plus, Calendar, ChevronLeft, Trash2, Music, GripVertical, X, Clock, Search, Layers, Play, Printer, Check, ChevronUp, ChevronDown, User, Save } from 'lucide-react';
+import { useContext } from 'react';
+import { UIContext } from '../App';
+import AppLogo from '../components/AppLogo';
+import { SetlistSkeletonCards } from '../components/SkeletonLoader';
 
 export default function SetlistScreen() {
     const navigate = useNavigate();
+    const { openSidebar } = useContext(UIContext);
     const [showAddModal, setShowAddModal] = useState(false);
     const [printSetlistData, setPrintSetlistData] = useState(null);
 
-    const setlists = useLiveQuery(() => db.setlists.toArray(), [], []) || [];
+    const { setlists } = useSongCache();
 
     // Hydrate from Supabase on mount
     useEffect(() => { discreetBackgroundSync(); }, []);
@@ -27,26 +29,30 @@ export default function SetlistScreen() {
             <div className="min-h-screen bg-primary pb-24">
                 {/* Header */}
                 <header className="glass sticky top-0 z-10 border-b border-white/5 shadow-md">
-                    <div className="px-5 pt-12 pb-4">
+                    <div className="px-5 pt-10 pb-4">
                         <div className="flex items-center justify-between">
-                            <button
-                                onClick={() => navigate('/library')}
-                                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-secondary border border-white/10 flex items-center justify-center text-textmuted active:text-white"
-                            >
-                                <ChevronLeft className="w-5 h-5" />
-                            </button>
-                            <div className="text-center">
-                                <h1 className="text-xl font-bold text-white leading-none">Worship Setlists</h1>
-                                <p className="text-[10px] text-textmuted tracking-widest uppercase mt-1">Pull down to sync • A4 Print</p>
+                            {/* App Logo opens Sidebar on click */}
+                            <AppLogo size="md" showText={true} onClick={openSidebar} />
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => navigate('/library')}
+                                    className="px-3.5 py-2 rounded-xl bg-secondary border border-white/10 flex items-center gap-1.5 text-xs font-bold text-textmuted hover:text-white active:scale-95 transition-colors shrink-0"
+                                    title="Back to Library"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                    <span>Library</span>
+                                </button>
                             </div>
-                            <div className="w-11" />
                         </div>
                     </div>
                 </header>
 
-                {/* Setlist List */}
-                <div className="px-5 py-5 space-y-4 max-w-xl mx-auto">
-                    {setlists.length === 0 ? (
+                {/* Setlist List Container */}
+                <div className="px-5 py-4 space-y-4">
+                    {!setlists ? (
+                        <SetlistSkeletonCards />
+                    ) : setlists.length === 0 ? (
                         <div className="text-center py-20 bg-elevated/40 rounded-3xl border border-white/5 p-8">
                             <div className="w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center mx-auto mb-4 text-accent">
                                 <Calendar className="w-8 h-8" />
@@ -109,7 +115,7 @@ function ModernSetlistCard({ setlist, onPrint }) {
     const [dragOverIndex, setDragOverIndex] = useState(null);
 
     // Fetch songs in exact setlist.songIds order with fallback to local seed
-    const allSongs = useLiveQuery(() => db.songs.toArray(), [], []);
+    const { songs: allSongs } = useSongCache();
     const [setlistSongs, setSetlistSongs] = useState([]);
 
     useEffect(() => {
@@ -140,8 +146,8 @@ function ModernSetlistCard({ setlist, onPrint }) {
     const handleDeleteSetlist = async (e) => {
         e.stopPropagation();
         if (confirm(`Delete setlist "${setlist.title}"?`)) {
-            await setlistDB.delete(setlist.id);
             await deleteSetlistFromSupabase(setlist.id, user);
+            await setlistDB.delete(setlist.id);
         }
     };
 
@@ -555,7 +561,7 @@ function ModernSetlistCard({ setlist, onPrint }) {
 
 // ── Print Preview Modal Component ──
 function PrintSetlistModal({ setlist, onClose }) {
-    const allSongs = useLiveQuery(() => db.songs.toArray(), [], []);
+    const { songs: allSongs } = useSongCache();
     const songKeys = setlist.songKeys || {};
     const [setlistSongs, setSetlistSongs] = useState([]);
 

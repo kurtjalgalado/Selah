@@ -5,23 +5,54 @@ export const db = new Dexie('SelahWorshipDB');
 
 db.version(1).stores({
     // Primary keys marked with ++, indexes with &
-    songs: '++id, title, artist, category, originalKey, tempo, dateAdded',
+    songs: '++id, title, artist, category, language, originalKey, tempo, dateAdded',
     setlists: '++id, title, date, *songIds',
     settings: '&key', // Key-value store for app settings
     syncQueue: '++id, table, action, recordId, timestamp',
 });
 
-// ── Seed scraped songs on load ──
-export async function seedDatabase() {
-    // Clear out old placeholder seed data if present
-    const firstSong = await db.songs.toCollection().first();
-    const count = await db.songs.count();
+// ── Seed scraped songs on load & clean duplicates ──
+export async function cleanupDuplicateSongs() {
+    try {
+        const allSongs = await db.songs.toArray();
+        const seenKeys = new Set();
+        const duplicatesToDelete = [];
 
-    // Re-seed if database is empty, contains old placeholder songs, or contains dirty tags
-    if (count < 50 || (firstSong && (!firstSong.tags || firstSong.tags.length > 2 || firstSong.title === "What a Beautiful Name"))) {
-        await db.songs.clear();
-        await db.songs.bulkAdd(scrapedSongs);
-        console.log(`Seeded IndexedDB with ${scrapedSongs.length} accurately tagged songs from selah.jfcm-missions.com`);
+        for (const s of allSongs) {
+            const key = `${s.id}-${(s.title || '').toLowerCase()}`;
+            if (seenKeys.has(key)) {
+                duplicatesToDelete.push(s.id);
+            } else {
+                seenKeys.add(key);
+            }
+        }
+
+        if (duplicatesToDelete.length > 0) {
+            for (const idToDelete of duplicatesToDelete) {
+                await db.songs.delete(idToDelete);
+            }
+            console.log(`Cleaned up ${duplicatesToDelete.length} duplicate song records from Dexie`);
+        }
+    } catch (e) { }
+}
+
+export async function seedDatabase() {
+    try {
+        const firstSong = await db.songs.toCollection().first();
+        const count = await db.songs.count();
+
+        // Re-seed if database is empty or contains legacy songs lacking accurate language tagging
+        if (count < 50 || (firstSong && !firstSong.language)) {
+            await db.songs.clear();
+            const seededWithIds = scrapedSongs.map((s, idx) => ({ id: idx + 1, ...s }));
+            await db.songs.bulkPut(seededWithIds);
+            console.log(`Re-seeded IndexedDB with ${scrapedSongs.length} accurately retagged songs`);
+        } else {
+            // Clean up legacy duplicate string IDs if present
+            await cleanupDuplicateSongs();
+        }
+    } catch (err) {
+        console.warn('Safe seed database catch:', err);
     }
 }
 

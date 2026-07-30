@@ -8,7 +8,7 @@ export default {
         secondary: '#16213E',
         elevated: '#1A1D29',
         accent: '#D4AF37',
-        'accent-soft': 'rgba(212, 175, 55, 0.1)',
+        'accent-soft': 'rgba(212, 175, 55, 0.15)',
         textmuted: '#8892B0',
         success: '#64FFDA',
         danger: '#FF6B6B',

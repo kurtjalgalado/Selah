@@ -8,7 +8,7 @@
   --bg-secondary: #16213E;
   --bg-elevated: #1A1D29;
   --accent: #D4AF37;
-  --accent-soft: rgba(212, 175, 55, 0.1);
+  --accent-soft: rgba(212, 175, 55, 0.15);
   --text-primary: #E8E8F0;
   --text-muted: #8892B0;
   --success: #64FFDA;
@@ -78,6 +78,16 @@ body {
   }
 }
 
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
 .animate-fadeIn {
   animation: fadeIn 0.3s ease forwards;
 }
@@ -88,6 +98,10 @@ body {
 
 .animate-slideIn {
   animation: slideInRight 0.4s ease forwards;
+}
+
+.animate-slideInLeft {
+  animation: slideInLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Glow */
