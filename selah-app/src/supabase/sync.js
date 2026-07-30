@@ -141,9 +141,19 @@ async function syncSetlistToDexie(list) {
 export async function discreetBackgroundSync() {
     try {
         const { data: remoteSetlists, error: setlistErr } = await supabase.from('setlists').select('*');
-        if (!setlistErr && remoteSetlists && remoteSetlists.length > 0) {
+        if (!setlistErr && remoteSetlists) {
+            // Hydrate remote setlists
             for (const list of remoteSetlists) {
                 await syncSetlistToDexie(list);
+            }
+
+            // Remove local setlists that no longer exist on the remote
+            const remoteIds = new Set(remoteSetlists.map(l => String(l.id)));
+            const localSetlists = await db.setlists.toArray();
+            for (const local of localSetlists) {
+                if (!remoteIds.has(String(local.id))) {
+                    await db.setlists.delete(local.id);
+                }
             }
         }
 
@@ -294,19 +304,7 @@ export async function pushSetlistToSupabase(setlist, user, opts = {}) {
 export async function deleteSetlistFromSupabase(setlistId, user, opts = {}) {
     try {
         const idStr = String(setlistId);
-        const idNum = Number(setlistId);
-
-        let query = supabase.from('setlists').delete();
-        if (!isNaN(idNum)) {
-            query = query.or(`id.eq.${idStr},id.eq.${idNum}`);
-        } else {
-            query = query.eq('id', idStr);
-        }
-
-        const { error } = await withRetry(() => query);
-        if (error) {
-            await withRetry(() => supabase.from('setlists').delete().eq('id', idStr));
-        }
+        await withRetry(() => supabase.from('setlists').delete().eq('id', idStr));
     } catch (err) {
         if (!opts.skipQueue) {
           await queueFailedOperation({ type: 'deleteSetlist', id: setlistId, user });
