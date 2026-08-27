@@ -5,7 +5,7 @@ import { songDB, setlistDB, getSongByIdOrTitle } from '../db/dexie';
 import { useSongCache } from '../context/SongCacheContext';
 import { KEYS, getKeyIndex, semitonesBetween, transposeLyrics, transposeChord, stripChords } from '../utils/chords';
 import { parseLyrics, isChordLine, separateChords } from '../utils/lyrics';
-import { ChevronLeft, Plus, Minus, ListPlus, Trash2, Edit3, Clock, Tag, Share, Play, Pause, ChevronUp, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronLeft, Plus, Minus, ListPlus, Trash2, Edit3, Clock, Tag, Share, Play, Pause, ChevronUp, SlidersHorizontal, X, Printer } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { UIContext } from '../App';
 import { deleteSongFromSupabase, pushSetlistToSupabase } from '../supabase/sync';
@@ -22,6 +22,7 @@ export default function SongDetailScreen() {
     const [fontSize, setFontSize] = useState(16);
     const [showAddToSetlist, setShowAddToSetlist] = useState(false);
     const [showOptionsModal, setShowOptionsModal] = useState(false);
+    const [showPrintModal, setShowPrintModal] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
 
     // Auto-scroll logic
@@ -199,6 +200,13 @@ export default function SongDetailScreen() {
                             <Edit3 className="w-4.5 h-4.5" />
                         </button>
 
+                        <button
+                            onClick={() => setShowPrintModal(true)}
+                            className="w-10 h-10 rounded-xl bg-secondary border border-themed flex items-center justify-center text-textmuted hover:text-accent"
+                            title="Print Chord Chart (Single Column)"
+                        >
+                            <Printer className="w-4.5 h-4.5" />
+                        </button>
                         <button
                             onClick={() => setShowAddToSetlist(true)}
                             className="w-10 h-10 rounded-xl bg-secondary border border-themed flex items-center justify-center text-textmuted hover:text-accent"
@@ -384,6 +392,17 @@ export default function SongDetailScreen() {
                                 </div>
                             )}
 
+                            {/* Print Song Button */}
+                            <button
+                                onClick={() => {
+                                    setShowOptionsModal(false);
+                                    setShowPrintModal(true);
+                                }}
+                                className="w-full py-3 px-4 rounded-xl bg-secondary border border-themed text-textprimary font-bold text-xs flex items-center justify-center gap-2 active:scale-98 hover:border-accent/40"
+                            >
+                                <Printer className="w-4 h-4 text-accent" /> Print Song Chord Chart (Single Column)
+                            </button>
+
                             {/* Share & Delete Actions */}
                             <div className="grid grid-cols-2 gap-3 pt-2">
                                 <button
@@ -519,6 +538,180 @@ export default function SongDetailScreen() {
                     </div>
                 </div>
             )}
+            {/* ===== QUICK PRINT SONG CHORD MODAL ===== */}
+            {showPrintModal && (
+                <SongPrintModal
+                    song={song}
+                    currentKey={currentKey}
+                    originalKey={originalKey}
+                    transposeAmount={transposeAmount}
+                    onClose={() => setShowPrintModal(false)}
+                />
+            )}
+        </div>
+    );
+}
+
+// ── Single Song Print Preview Modal (Single Column Layout) ──
+export function SongPrintModal({ song, currentKey, originalKey, transposeAmount, onClose }) {
+    const semitones = transposeAmount || 0;
+    const transposedLyrics = transposeLyrics(song?.lyrics || '', semitones);
+    const sections = parseLyrics(transposedLyrics);
+
+    const handlePrint = () => {
+        if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
+            window.AndroidPrint.print();
+        } else {
+            window.print();
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 overflow-y-auto p-3 sm:p-6 flex flex-col items-center animate-fadeIn">
+            {/* Action Bar */}
+            <div className="sticky top-2 sm:top-4 z-50 w-full max-w-3xl bg-elevated/95 border border-themed px-4 sm:px-6 py-3 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 mb-6 print:hidden">
+                <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shrink-0">
+                        <Printer className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                        <h3 className="font-bold text-textprimary text-sm sm:text-base truncate">{song?.title}</h3>
+                        <p className="text-[11px] text-textmuted truncate">
+                            Key: {currentKey} • Single Column Chord Chart (A4)
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0">
+                    <button
+                        onClick={handlePrint}
+                        className="px-4 h-10 rounded-xl bg-accent text-onaccent font-bold text-xs flex items-center gap-2 shadow-lg shadow-accent/25 active:scale-95 transition-all"
+                        title="Print / Save PDF"
+                    >
+                        <Printer className="w-4 h-4 fill-current" />
+                        <span>Print Chart</span>
+                    </button>
+                    <button
+                        onClick={onClose}
+                        className="w-10 h-10 rounded-xl bg-secondary text-textmuted hover:text-textprimary flex items-center justify-center border border-themed transition-colors"
+                        title="Close"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+            </div>
+
+            {/* A4 Single Column Printable Document */}
+            <div className="printable-wrapper w-full max-w-3xl space-y-6 print:space-y-0">
+                <div className="a4-page bg-white text-black p-8 sm:p-10 rounded-xl shadow-2xl w-full min-h-[1080px] text-left flex flex-col justify-between box-border overflow-hidden">
+                    <div>
+                        {/* Song Header */}
+                        <div className="border-b-2 border-black/20 pb-4 mb-5 flex justify-between items-start shrink-0">
+                            <div className="min-w-0 flex-1">
+                                <h1 className="text-2xl font-bold font-serif text-black uppercase tracking-wide">
+                                    {song?.title}
+                                </h1>
+                                <p className="text-xs text-gray-600 mt-0.5">
+                                    Artist: <strong>{song?.artist || 'Unknown'}</strong> • Category: {song?.category || 'Worship'}
+                                </p>
+                            </div>
+                            <div className="text-right shrink-0">
+                                <span className="px-3 py-1.5 bg-black text-white rounded-lg font-bold text-sm inline-block shadow-sm">
+                                    Key: {currentKey}
+                                </span>
+                                {currentKey !== originalKey && (
+                                    <p className="text-[10px] text-gray-500 mt-1">Orig: {originalKey}</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Single Column Chords & Lyrics */}
+                        <div className="space-y-4 text-[13px] leading-relaxed">
+                            {sections.map((sec, sIdx) => (
+                                <div key={sIdx} className="mb-4 break-inside-avoid">
+                                    <div className="font-bold text-xs uppercase tracking-wider text-amber-900 border-b border-gray-200 pb-0.5 mb-1.5">
+                                        {sec.label}
+                                    </div>
+                                    {sec.lines.map((line, lIdx) => {
+                                        if (!isChordLine(line)) {
+                                            return (
+                                                <p key={lIdx} className="text-gray-900 font-sans text-[13px] leading-relaxed my-0.5 whitespace-pre-wrap break-words">
+                                                    {line || '\u00A0'}
+                                                </p>
+                                            );
+                                        }
+
+                                        const { chordLine, lyricLine } = separateChords(line);
+                                        return (
+                                            <div key={lIdx} className="my-1.5">
+                                                <pre className="font-mono text-amber-950 font-black text-[15px] leading-tight mb-0.5 whitespace-pre-wrap break-words tracking-wide">
+                                                    {chordLine}
+                                                </pre>
+                                                <p className="text-gray-900 font-sans text-[13px] leading-relaxed my-0 whitespace-pre-wrap break-words">
+                                                    {lyricLine || '\u00A0'}
+                                                </p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="border-t border-gray-200 pt-3 mt-6 text-[10px] text-gray-500 flex justify-between items-center shrink-0">
+                        <span>Selah Worship Planner</span>
+                        <span>Single Column Chord Chart</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Print CSS */}
+            <style dangerouslySetInnerHTML={{ __html: `
+                @media print {
+                    @page {
+                        size: A4 portrait;
+                        margin: 0;
+                    }
+                    html, body {
+                        background: #ffffff !important;
+                        color: #000000 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        height: auto !important;
+                        overflow: visible !important;
+                    }
+                    .fixed.inset-0 {
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        width: 100% !important;
+                        height: auto !important;
+                        background: transparent !important;
+                        backdrop-filter: none !important;
+                        overflow: visible !important;
+                        padding: 0 !important;
+                        display: block !important;
+                    }
+                    button, header, nav {
+                        display: none !important;
+                    }
+                    .printable-wrapper {
+                        display: block !important;
+                        position: relative !important;
+                        width: 100% !important;
+                        margin: 0 !important;
+                    }
+                    .a4-page {
+                        box-shadow: none !important;
+                        border-radius: 0 !important;
+                        margin: 0 !important;
+                        width: 100% !important;
+                        min-height: 100vh !important;
+                        page-break-inside: avoid !important;
+                    }
+                }
+            ` }} />
         </div>
     );
 }

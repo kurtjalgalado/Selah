@@ -70,11 +70,12 @@ export default function BottomNavBar() {
                         <button
                             key={item.id}
                             onClick={() => handleSelect(item)}
-                            className="group flex flex-col items-center justify-center flex-1 py-1 px-1 relative transition-all duration-200 active:scale-95 focus:outline-none min-h-[48px]"
+                            className="group flex flex-col items-center justify-center flex-1 py-1 px-1 relative transition-all duration-200 active:scale-95 border-0 outline-none focus:outline-none focus-visible:outline-none focus:ring-0 select-none min-h-[48px]"
+                            style={{ WebkitTapHighlightColor: 'transparent' }}
                         >
                             {/* Material 3 Expressive Active Indicator Pill */}
                             <div 
-                                className={`relative w-14 h-8 rounded-full flex items-center justify-center transition-all duration-300 ease-out ${
+                                className={`relative w-14 h-8 rounded-full flex items-center justify-center transition-all duration-300 ease-out border-0 outline-none select-none ${
                                     active 
                                         ? 'bg-accent text-onaccent shadow-md shadow-accent/25 scale-100' 
                                         : 'bg-transparent text-textmuted hover:text-textprimary hover:bg-surface-hover scale-90'
@@ -89,7 +90,7 @@ export default function BottomNavBar() {
 
                             {/* Label */}
                             <span 
-                                className={`text-[10px] mt-1 tracking-tight transition-all duration-200 select-none ${
+                                className={`text-[10px] mt-1 tracking-tight transition-all duration-200 select-none border-0 outline-none ${
                                     active 
                                         ? 'font-bold text-accent scale-100' 
                                         : 'font-medium text-textmuted group-hover:text-textprimary scale-95'

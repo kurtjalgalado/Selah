@@ -28,9 +28,7 @@ export async function cleanupDuplicateSongs() {
         }
 
         if (duplicatesToDelete.length > 0) {
-            for (const idToDelete of duplicatesToDelete) {
-                await db.songs.delete(idToDelete);
-            }
+            await db.songs.bulkDelete(duplicatesToDelete);
         }
     } catch (e) {
         // Ignored

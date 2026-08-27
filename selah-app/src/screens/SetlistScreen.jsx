@@ -163,7 +163,7 @@ export default function SetlistScreen() {
                 {user ? (
                     <button
                         onClick={handleOpenAddModal}
-                        className="fixed bottom-20 right-6 w-14 h-14 min-w-[56px] min-h-[56px] rounded-full bg-accent text-onaccent flex items-center justify-center shadow-xl shadow-accent/30 glow-accent z-30 active:scale-95 transition-transform"
+                        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-24 right-5 sm:right-6 w-14 h-14 min-w-[56px] min-h-[56px] rounded-full bg-accent text-onaccent flex items-center justify-center shadow-2xl shadow-black/80 glow-accent z-30 active:scale-95 transition-transform"
                         title="Create Setlist"
                     >
                         <Plus className="w-6 h-6 stroke-[3]" />
@@ -171,7 +171,7 @@ export default function SetlistScreen() {
                 ) : (
                     <button
                         onClick={() => navigate('/login')}
-                        className="fixed bottom-20 right-6 px-5 h-12 bg-accent text-onaccent font-bold text-xs rounded-full shadow-xl shadow-accent/30 glow-accent z-30 flex items-center gap-2 active:scale-95 transition-transform"
+                        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-24 right-5 sm:right-6 px-5 h-12 bg-accent text-onaccent font-bold text-xs rounded-full shadow-2xl shadow-black/80 glow-accent z-30 flex items-center gap-2 active:scale-95 transition-transform"
                         title="Sign In to Create Setlist"
                     >
                         <User className="w-4 h-4" />
@@ -922,6 +922,7 @@ export function PrintSetlistModal({ setlist, onClose }) {
     const { songs: allSongs } = useSongCache();
     const songKeys = setlist.songKeys || {};
     const [setlistSongs, setSetlistSongs] = useState([]);
+    const [columns, setColumns] = useState(2); // 1 = 1 song/page (Single column), 2 = 2 songs/page (2-columns)
 
     useEffect(() => {
         let isMounted = true;
@@ -933,10 +934,11 @@ export function PrintSetlistModal({ setlist, onClose }) {
         return () => { isMounted = false; };
     }, [setlist.songIds?.join(','), allSongs]);
 
-    // Chunk songs into groups of EXACTLY 2 songs per page
+    // Chunk songs based on selected column layout (1 or 2 songs per page)
+    const songsPerPage = columns === 1 ? 1 : 2;
     const pages = [];
-    for (let i = 0; i < setlistSongs.length; i += 2) {
-        pages.push(setlistSongs.slice(i, i + 2));
+    for (let i = 0; i < setlistSongs.length; i += songsPerPage) {
+        pages.push(setlistSongs.slice(i, i + songsPerPage));
     }
 
     const handlePrintTrigger = () => {
@@ -948,29 +950,67 @@ export function PrintSetlistModal({ setlist, onClose }) {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 overflow-y-auto p-4 flex flex-col items-center">
-            {/* Minimalist Action Bar */}
-            <div className="sticky top-4 z-50 w-full max-w-4xl bg-elevated border border-themed px-5 py-3.5 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center justify-between gap-4 mb-6 print:hidden">
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 overflow-y-auto p-3 sm:p-6 flex flex-col items-center animate-fadeIn">
+            {/* Revamped High-Contrast Action Bar */}
+            <div className="sticky top-2 sm:top-4 z-50 w-full max-w-4xl bg-elevated/95 border border-themed px-4 sm:px-6 py-3 rounded-2xl shadow-2xl backdrop-blur-xl flex flex-wrap items-center justify-between gap-3 mb-6 print:hidden">
+                {/* Title & Metadata */}
                 <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shrink-0">
-                        <Printer className="w-5 h-5 text-accent" />
+                        <Printer className="w-5 h-5" />
                     </div>
-                    <h3 className="font-bold text-textprimary text-base truncate">Print Preview</h3>
+                    <div className="min-w-0">
+                        <h3 className="font-bold text-textprimary text-sm sm:text-base truncate">{setlist.title}</h3>
+                        <p className="text-[11px] text-textmuted truncate">
+                            {setlistSongs.length} songs • {pages.length} {pages.length === 1 ? 'page' : 'pages'} A4
+                        </p>
+                    </div>
                 </div>
-                <div className="flex items-center gap-2.5 shrink-0">
+
+                {/* Print Layout Segmented Toggle & Actions */}
+                <div className="flex items-center gap-2.5 shrink-0 ml-auto">
+                    {/* 1-Col vs 2-Col Layout Switch */}
+                    <div className="flex items-center bg-secondary p-1 rounded-xl border border-themed">
+                        <button
+                            onClick={() => setColumns(1)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                columns === 1 
+                                    ? 'bg-accent text-onaccent shadow-sm' 
+                                    : 'text-textmuted hover:text-textprimary'
+                            }`}
+                            title="1 Song per Page (Large / Single Column)"
+                        >
+                            <span>1 Song/Page</span>
+                        </button>
+                        <button
+                            onClick={() => setColumns(2)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                columns === 2 
+                                    ? 'bg-accent text-onaccent shadow-sm' 
+                                    : 'text-textmuted hover:text-textprimary'
+                            }`}
+                            title="2 Songs per Page (2-Column Compact)"
+                        >
+                            <span>2 Songs/Page</span>
+                        </button>
+                    </div>
+
+                    {/* Print Button */}
+                    <button
+                        onClick={handlePrintTrigger}
+                        className="px-4 h-10 rounded-xl bg-accent text-onaccent font-bold text-xs flex items-center gap-2 shadow-lg shadow-accent/25 active:scale-95 transition-all"
+                        title="Print / Save as PDF"
+                    >
+                        <Printer className="w-4 h-4 fill-current" />
+                        <span className="hidden xs:inline">Print Chart</span>
+                    </button>
+
+                    {/* Close Button */}
                     <button
                         onClick={onClose}
-                        className="w-10 h-10 rounded-xl bg-secondary text-textmuted hover:text-textprimary flex items-center justify-center transition-colors min-w-[40px] min-h-[40px]"
+                        className="w-10 h-10 rounded-xl bg-secondary text-textmuted hover:text-textprimary flex items-center justify-center border border-themed transition-colors"
                         title="Close Preview"
                     >
                         <X className="w-5 h-5" />
-                    </button>
-                    <button
-                        onClick={handlePrintTrigger}
-                        className="w-12 h-10 rounded-xl bg-accent text-onaccent flex items-center justify-center shadow-lg shadow-accent/25 active:bg-yellow-300 active:scale-95 transition-all min-w-[48px] min-h-[40px]"
-                        title="Print / Save PDF"
-                    >
-                        <Printer className="w-5 h-5 fill-current" />
                     </button>
                 </div>
             </div>
@@ -997,7 +1037,10 @@ export function PrintSetlistModal({ setlist, onClose }) {
                                 </p>
                             </div>
                             <span className="text-[10px] font-bold uppercase bg-black text-white px-2.5 py-1 rounded">
-                                Songs {pageIdx * 2 + 1}–{Math.min((pageIdx + 1) * 2, setlistSongs.length)} of {setlistSongs.length}
+                                {columns === 1 
+                                    ? `Song ${pageIdx + 1} of ${setlistSongs.length}`
+                                    : `Songs ${pageIdx * 2 + 1}–${Math.min((pageIdx + 1) * 2, setlistSongs.length)} of ${setlistSongs.length}`
+                                }
                             </span>
                         </div>
 
@@ -1007,10 +1050,10 @@ export function PrintSetlistModal({ setlist, onClose }) {
                             </div>
                         )}
 
-                        {/* 2-Column Song Layout per Page */}
-                        <div className="grid grid-cols-2 gap-5 items-start flex-1 min-h-0">
+                        {/* Song Layout per Page (1-Column vs 2-Columns) */}
+                        <div className={`grid ${columns === 1 ? 'grid-cols-1' : 'grid-cols-2 gap-5'} items-start flex-1 min-h-0`}>
                             {pageSongs.map((song, songInPageIdx) => {
-                                const globalIdx = pageIdx * 2 + songInPageIdx;
+                                const globalIdx = columns === 1 ? pageIdx : pageIdx * 2 + songInPageIdx;
                                 const targetKey = songKeys[song.id] || song.originalKey || song.currentKey || 'C';
                                 const semitones = semitonesBetween(song.originalKey || 'C', targetKey);
                                 const transposedLyrics = transposeLyrics(song.lyrics || '', semitones);
@@ -1019,7 +1062,7 @@ export function PrintSetlistModal({ setlist, onClose }) {
                                 return (
                                     <div
                                         key={song.id}
-                                        className="border border-gray-300 rounded-xl p-3.5 bg-gray-50/50 shadow-sm overflow-hidden box-border max-w-full h-full flex flex-col justify-between"
+                                        className="border border-gray-300 rounded-xl p-4 bg-gray-50/50 shadow-sm overflow-hidden box-border max-w-full h-full flex flex-col justify-between"
                                     >
                                         <div>
                                             {/* Song Header */}
@@ -1040,11 +1083,11 @@ export function PrintSetlistModal({ setlist, onClose }) {
                                                 </div>
                                             </div>
 
-                                            {/* Song Sections with 12px Legible Chords/Lyrics */}
-                                            <div className="space-y-2.5 text-[12px] leading-snug">
+                                            {/* Song Sections */}
+                                            <div className={`space-y-3 text-[12px] leading-snug ${columns === 1 ? 'columns-1 sm:columns-2 gap-6' : ''}`}>
                                                 {sections.map((sec, sIdx) => (
-                                                    <div key={sIdx} className="mb-2">
-                                                        <div className="font-bold text-[11px] uppercase tracking-wider text-amber-900 border-b border-gray-200 pb-0.5 mb-0.5">
+                                                    <div key={sIdx} className="mb-3 break-inside-avoid">
+                                                        <div className="font-bold text-[11px] uppercase tracking-wider text-amber-900 border-b border-gray-200 pb-0.5 mb-1">
                                                             {sec.label}
                                                         </div>
                                                         {sec.lines.map((line, lIdx) => {

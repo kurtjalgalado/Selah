@@ -185,9 +185,10 @@ export async function discreetBackgroundSync() {
             }
         }
 
-        // Hydrate remote song edits if present safely without duplicate records
+        // Hydrate remote song edits if present safely without duplicate records or flickering
         const { data: remoteSongs, error: songErr } = await supabase.from('songs').select('*');
         if (!songErr && remoteSongs && remoteSongs.length > 0) {
+            const songsToUpdate = [];
             for (const song of remoteSongs) {
                 if (song.id) {
                     const targetId = !isNaN(Number(song.id)) ? Number(song.id) : song.id;
@@ -195,10 +196,7 @@ export async function discreetBackgroundSync() {
                     if (existing && !isRemoteNewer(existing.updatedAt, song.updated_at)) {
                       continue; // local is newer or equal, skip
                     }
-                    if (typeof targetId === 'number') {
-                        await db.songs.delete(targetId);
-                    }
-                    await db.songs.put({
+                    songsToUpdate.push({
                         id: targetId,
                         title: song.title,
                         artist: song.artist,
@@ -212,6 +210,9 @@ export async function discreetBackgroundSync() {
                         tags: song.tags || existing?.tags || [song.category || 'Slow']
                     });
                 }
+            }
+            if (songsToUpdate.length > 0) {
+                await db.songs.bulkPut(songsToUpdate);
             }
         }
 

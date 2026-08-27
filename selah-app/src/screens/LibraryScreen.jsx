@@ -450,7 +450,7 @@ export default function LibraryScreen() {
                             haptic('light');
                             setShowAddSongModal(true);
                         }}
-                        className="fixed bottom-20 right-6 w-14 h-14 rounded-full bg-accent text-onaccent flex items-center justify-center shadow-xl shadow-accent/30 glow-accent z-30 min-w-[56px] min-h-[56px] active:scale-95 transition-transform"
+                        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-24 right-5 sm:right-6 w-14 h-14 rounded-full bg-accent text-onaccent flex items-center justify-center shadow-2xl shadow-black/80 glow-accent z-30 min-w-[56px] min-h-[56px] active:scale-95 transition-transform"
                         title="Add New Song"
                     >
                         <Plus className="w-6 h-6 stroke-[3]" />
