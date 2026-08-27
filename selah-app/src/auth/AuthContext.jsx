@@ -17,9 +17,7 @@ export function AuthProvider({ children }) {
             const currentUser = session?.user ?? null;
             setUser(currentUser);
             setLoading(false);
-            if (currentUser) {
-                initRealtimeSync(currentUser);
-            }
+            initRealtimeSync(currentUser).catch(() => {});
         });
 
         // Listen for auth changes
@@ -28,9 +26,7 @@ export function AuthProvider({ children }) {
             const currentUser = session?.user ?? null;
             setUser(currentUser);
             setLoading(false);
-            if (currentUser) {
-                initRealtimeSync(currentUser);
-            }
+            initRealtimeSync(currentUser).catch(() => {});
         });
 
         // Handle Capacitor In-App Deep Linking for OAuth Callback
@@ -41,7 +37,7 @@ export function AuthProvider({ children }) {
                 if (sessionData?.session) {
                     setSession(sessionData.session);
                     setUser(sessionData.session.user);
-                    initRealtimeSync(sessionData.session.user);
+                    initRealtimeSync(sessionData.session.user).catch(() => {});
                 }
             }
         }).then(l => { deepLinkListener = l; });
@@ -55,10 +51,18 @@ export function AuthProvider({ children }) {
     const signUp = async (email, password, username) => {
         const cleanUsername = username.trim();
         const cleanEmail = email.trim();
+        const isNative = window.Capacitor?.isNativePlatform?.();
+        const redirectUrl = isNative
+            ? 'com.selah.worship://auth-callback'
+            : `${window.location.origin}/#/login`;
+
         const { data, error } = await supabase.auth.signUp({
             email: cleanEmail,
             password,
-            options: { data: { username: cleanUsername } },
+            options: {
+                data: { username: cleanUsername },
+                emailRedirectTo: redirectUrl
+            },
         });
         if (error) throw error;
 

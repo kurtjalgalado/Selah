@@ -5,8 +5,8 @@ import { db } from '../db/dexie';
 const SongCacheContext = createContext(null);
 
 export function SongCacheProvider({ children }) {
-  const songs = useLiveQuery(() => db.songs.toArray(), [], []);
-  const setlists = useLiveQuery(() => db.setlists.toArray(), [], []);
+  const songs = useLiveQuery(() => db.songs.toArray(), [], undefined);
+  const setlists = useLiveQuery(() => db.setlists.toArray(), [], undefined);
 
   return (
     <SongCacheContext.Provider value={{ songs, setlists }}>

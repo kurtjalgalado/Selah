@@ -63,12 +63,12 @@ export default function PullToRefresh({ onRefresh, children }) {
                     className="fixed left-0 right-0 flex justify-center pointer-events-none transition-all duration-200"
                     style={{
                         top: '80px',
-                        zIndex: 5,
+                        zIndex: 50,
                         opacity: pullDistance > 10 || isRefreshing ? 1 : 0,
                         transform: `translateY(${Math.min(pullDistance, THRESHOLD) * 0.5}px)`
                     }}
                 >
-                    <div className="flex items-center gap-2 text-xs font-bold text-accent bg-elevated/90 px-4 py-2 rounded-full border border-white/10 shadow-lg backdrop-blur-sm">
+                    <div className="flex items-center gap-2 text-xs font-bold text-accent bg-elevated px-4 py-2 rounded-full border border-themed shadow-lg backdrop-blur-sm">
                         <RefreshCw
                             className={`w-4 h-4 text-accent transition-transform ${
                                 isRefreshing ? 'animate-spin' : ''

@@ -1,14 +1,14 @@
 import Dexie from 'dexie';
 import scrapedSongs from './scraped_songs.json';
 
-export const db = new Dexie('SelahWorshipDB');
+// Clean, unified Dexie database schema (v2 without conflicting primary key upgrades)
+export const db = new Dexie('SelahWorshipDB_v2');
 
 db.version(1).stores({
-    // Primary keys marked with ++, indexes with &
-    songs: '++id, title, artist, category, language, originalKey, tempo, dateAdded',
-    setlists: '++id, title, date, *songIds',
-    settings: '&key', // Key-value store for app settings
-    syncQueue: '++id, table, action, recordId, timestamp',
+    songs: 'id, title, artist, category, language, originalKey, tempo, tags, dateAdded',
+    setlists: 'id, title, date, *songIds',
+    settings: '&key',
+    syncQueue: 'id, createdAt, retries',
 });
 
 // ── Seed scraped songs on load & clean duplicates ──
@@ -31,42 +31,57 @@ export async function cleanupDuplicateSongs() {
             for (const idToDelete of duplicatesToDelete) {
                 await db.songs.delete(idToDelete);
             }
-            console.log(`Cleaned up ${duplicatesToDelete.length} duplicate song records from Dexie`);
         }
-    } catch (e) { }
+    } catch (e) {
+        // Ignored
+    }
 }
 
 export async function seedDatabase() {
     try {
-        const firstSong = await db.songs.toCollection().first();
-        const count = await db.songs.count();
+        // Safely delete legacy DB that had failed schema migration
+        if (typeof indexedDB !== 'undefined') {
+            try {
+                indexedDB.deleteDatabase('SelahWorshipDB');
+            } catch (e) {
+                // Ignore cleanup error
+            }
+        }
 
-        // Re-seed if database is empty or contains legacy songs lacking accurate language tagging
-        if (count < 50 || (firstSong && !firstSong.language)) {
-            await db.songs.clear();
+        const count = await db.songs.count();
+        if (count === 0) {
+            console.log('[Selah DB] Database empty, seeding initial songs...');
             const seededWithIds = scrapedSongs.map((s, idx) => ({ id: idx + 1, ...s }));
             await db.songs.bulkPut(seededWithIds);
-            console.log(`Re-seeded IndexedDB with ${scrapedSongs.length} accurately retagged songs`);
+            console.log('[Selah DB] Seeded', seededWithIds.length, 'songs successfully');
         } else {
-            // Clean up legacy duplicate string IDs if present
             await cleanupDuplicateSongs();
         }
     } catch (err) {
-        console.warn('Safe seed database catch:', err);
+        console.error('[Selah DB] seedDatabase failed:', err);
     }
 }
 
 // ── CRUD Helpers ──
 export const songDB = {
     getAll: () => db.songs.toArray(),
-    getById: (id) => db.songs.get(id),
-    add: (song) => db.songs.add({ ...song, dateAdded: new Date().toISOString() }),
-    update: (id, changes) => db.songs.update(id, changes),
-    delete: (id) => db.songs.delete(id),
+    getById: (id) => db.songs.get(!isNaN(Number(id)) ? Number(id) : String(id)),
+    add: async (song) => {
+        const id = song.id || crypto.randomUUID();
+        const record = {
+            ...song,
+            id,
+            dateAdded: song.dateAdded || new Date().toISOString()
+        };
+        await db.songs.put(record);
+        return id;
+    },
+    update: (id, changes) => db.songs.update(!isNaN(Number(id)) ? Number(id) : String(id), changes),
+    delete: (id) => db.songs.delete(!isNaN(Number(id)) ? Number(id) : String(id)),
     search: (query) => db.songs
         .filter(s =>
-            s.title.toLowerCase().includes(query.toLowerCase()) ||
-            s.artist.toLowerCase().includes(query.toLowerCase())
+            (s.title || '').toLowerCase().includes(query.toLowerCase()) ||
+            (s.artist || '').toLowerCase().includes(query.toLowerCase())
         )
         .toArray(),
 };
@@ -101,11 +116,17 @@ export async function getSongByIdOrTitle(id) {
 
 export const setlistDB = {
     getAll: () => db.setlists.toArray(),
-    getById: (id) => db.setlists.get(id),
-    add: (setlist) => db.setlists.add({
-        ...setlist,
-        created: new Date().toISOString()
-    }),
-    update: (id, changes) => db.setlists.update(id, changes),
-    delete: (id) => db.setlists.delete(id),
+    getById: (id) => db.setlists.get(String(id)),
+    add: async (setlist) => {
+        const id = String(setlist.id || crypto.randomUUID());
+        const record = {
+            ...setlist,
+            id,
+            created: setlist.created || new Date().toISOString()
+        };
+        await db.setlists.put(record);
+        return id;
+    },
+    update: (id, changes) => db.setlists.update(String(id), changes),
+    delete: (id) => db.setlists.delete(String(id)),
 };

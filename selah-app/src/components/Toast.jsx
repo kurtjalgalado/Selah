@@ -12,7 +12,7 @@ export default function Toast({ message, type = 'success', onClose }) {
 
     return (
         <div className="fixed bottom-24 right-5 z-50 animate-slideIn">
-            <div className={`flex items-center gap-3 bg-elevated border ${color} px-4 py-3 rounded-xl shadow-xl`}>
+            <div className={`flex items-center gap-3 bg-elevated border ${color} px-4 py-3 rounded-xl shadow-xl text-textprimary`}>
                 <Icon className="w-5 h-5" />
                 <span className="text-sm font-medium">{message}</span>
             </div>

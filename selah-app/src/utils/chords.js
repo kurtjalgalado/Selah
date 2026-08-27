@@ -46,17 +46,40 @@ export function getKeyIndex(key) {
     return idx === -1 ? 0 : idx;
 }
 
+// Section labels that should NOT be transposed as chords
+const SECTION_LABEL_REGEX = /^(verse|chorus|bridge|intro|outro|pre-?\s*chorus|post-?\s*chorus|refrain|tag|ending|end|instrumental|inst|interlude|hook|part|solo|guitar\s*solo|turnaround|turn\s*around|vamp|riff|break|coda|v\d+|c\d+|b\d+)([\s:()\-_/\.].*)?$/i;
+
+export function isSectionLabel(text) {
+    if (!text) return false;
+    const clean = text.replace(/^\[|\]$/g, '').trim();
+    if (!clean) return false;
+    if (SECTION_LABEL_REGEX.test(clean)) return true;
+    if (/^(guitar|piano|keyboard|acoustic|electric|synth|bass|drum|final|last|ending|outer|inner)\s+(solo|intro|outro|chorus|bridge|verse|part|riff|break)/i.test(clean)) {
+        return true;
+    }
+    return false;
+}
+
+// Valid chord suffix elements (modifiers/extensions after root note)
+const VALID_CHORD_SUFFIX_REGEX = /^(maj|maj7|maj9|maj11|maj13|min|min7|m|m7|m9|m11|m13|dim|dim7|aug|sus|sus2|sus4|add|add9|add11|\/|-|\+|\d|\.|\(|\)|#|b|7|9|11|13|6|2|4|5)*$/i;
+
 /**
  * Transpose a single chord by a number of semitones
  */
 export function transposeChord(chord, semitones) {
     if (!chord) return chord;
+    if (isSectionLabel(chord)) return chord;
 
     // Match root note (including sharps/flats) and suffix
     const match = chord.match(/^([A-G][#b]?)(.*)/);
     if (!match) return chord;
 
     const [, root, suffix] = match;
+
+    // Reject non-chord words starting with A-G (e.g. Chorus -> horus, Bridge -> ridge, Ending -> nding)
+    if (suffix && !VALID_CHORD_SUFFIX_REGEX.test(suffix)) {
+        return chord;
+    }
 
     // Normalize root for lookup
     let normalizedRoot = root;
@@ -84,9 +107,11 @@ export function transposeChord(chord, semitones) {
  */
 export function transposeLine(line, semitones) {
     return line.replace(/\[([^\]]+)\]/g, (match, chord) => {
+        if (isSectionLabel(chord)) return `[${chord}]`;
         // Handle slash chords like C/G
         if (chord.includes('/')) {
             const [bass, treble] = chord.split('/');
+            if (isSectionLabel(bass) || isSectionLabel(treble)) return `[${chord}]`;
             return `[${transposeChord(bass, semitones)}/${transposeChord(treble, semitones)}]`;
         }
         return `[${transposeChord(chord, semitones)}]`;
@@ -113,3 +138,16 @@ export function semitonesBetween(fromKey, toKey) {
     if (fromIdx === -1 || toIdx === -1) return 0;
     return (toIdx - fromIdx + 12) % 12;
 }
+
+/**
+ * Strip bracketed chords from lyrics for clean sharing/copying
+ */
+export function stripChords(lyrics) {
+    if (!lyrics) return '';
+    return lyrics
+        .split('\n')
+        .map(line => line.replace(/\[[^\]]+\]/g, '').trimEnd())
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}

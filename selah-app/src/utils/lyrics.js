@@ -1,4 +1,6 @@
-const SECTION_TAG_REGEX = /^\[?(verse|chorus|bridge|intro|outro|pre-?chorus|refrain|tag|ending|instrumental|interlude|hook|part|\d+)[^\]:]*:?\]?$/i;
+import { isSectionLabel } from './chords.js';
+
+const SECTION_TAG_REGEX = /^\[?(verse|chorus|bridge|intro|outro|pre-?\s*chorus|post-?\s*chorus|refrain|tag|ending|end|instrumental|inst|interlude|hook|part|solo|turnaround|turn\s*around|vamp|riff|break|coda|v\d+|c\d+|b\d+|\d+)[^\]]*\]?:?$/i;
 
 export function parseLyrics(lyrics) {
     if (!lyrics) return [];
@@ -12,9 +14,9 @@ export function parseLyrics(lyrics) {
         const tagMatch = trimmed.match(/^\[?([A-Za-z0-9\s-]+?):?\]?$/);
 
         // A section header is a bracketed tag [Chorus] or title line Chorus: / Verse 1:
-        const isSectionHeader = trimmed.length > 0 && trimmed.length < 30 && (
+        const isSectionHeader = trimmed.length > 0 && trimmed.length < 40 && (
             SECTION_TAG_REGEX.test(trimmed) ||
-            /^(verse|chorus|bridge|intro|outro|pre-?chorus|refrain|tag|ending|instrumental|interlude|hook)/i.test(trimmed)
+            /^(verse|chorus|bridge|intro|outro|pre-?\s*chorus|post-?\s*chorus|refrain|tag|ending|end|instrumental|inst|interlude|hook|solo|turnaround|vamp|coda)/i.test(trimmed)
         ) && !isChordLine(line);
 
         if (isSectionHeader) {
@@ -50,33 +52,43 @@ export function parseLyrics(lyrics) {
  * Check if a line contains chords (in brackets)
  */
 export function isChordLine(line) {
-    return /\[([A-G][#b]?[a-zA-Z0-9\/\-+]*)\]/.test(line);
+    if (!line) return false;
+    const matches = line.match(/\[([^\]]+)\]/g);
+    if (!matches) return false;
+    return matches.some(match => {
+        const content = match.slice(1, -1).trim();
+        return !isSectionLabel(content) && /^([A-G][#b]?)(.*)/.test(content);
+    });
 }
 
 /**
  * Separate chords from lyrics for dual-line display
  */
 export function separateChords(line) {
-    const chords = [];
-    const lyrics = [];
-    let lastIndex = 0;
-
     const regex = /\[([^\]]+)\]/g;
     let match;
     let lyricText = '';
+    let chordLine = '';
+    let lyricPos = 0;
+    let lastIndex = 0;
 
     while ((match = regex.exec(line)) !== null) {
-        // Add spaces to align chord position
-        const spaces = ' '.repeat(match.index - lastIndex);
-        chords.push(spaces + match[1]);
-        lyricText += line.substring(lastIndex, match.index);
+        // Append lyrics before this chord marker
+        const textBefore = line.substring(lastIndex, match.index);
+        lyricText += textBefore;
+        lyricPos += textBefore.length;
+
+        // Pad chord line to current lyric position, then append chord
+        while (chordLine.length < lyricPos) chordLine += ' ';
+        chordLine += match[1];
+
         lastIndex = match.index + match[0].length;
     }
 
     lyricText += line.substring(lastIndex);
 
     return {
-        chordLine: chords.join(' '),
+        chordLine,
         lyricLine: lyricText.trim(),
     };
 }

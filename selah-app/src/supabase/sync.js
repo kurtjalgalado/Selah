@@ -9,7 +9,11 @@ let backgroundSyncTimer = null;
 async function withRetry(fn, retries = 3, delay = 1000) {
   for (let i = 0; i < retries; i++) {
     try {
-      return await fn();
+      const res = await fn();
+      if (res && res.error) {
+        throw res.error;
+      }
+      return res;
     } catch (err) {
       if (i === retries - 1) throw err;
       const backoff = delay * Math.pow(2, i) + Math.random() * delay;
@@ -92,40 +96,40 @@ export async function migrateDataToSupabase(user) {
             }));
 
             // Attempt optional custom columns sync if schema supports them
-            const localPin = localStorage.getItem(`selah_pin_${user.id}`);
             const localAccent = localStorage.getItem('selah_accent_color');
             let accentHex = null;
             if (localAccent) {
                 try { accentHex = JSON.parse(localAccent).hex; } catch (e) { }
             }
 
-            if (localPin || accentHex) {
+            if (accentHex) {
                 await withRetry(() => supabase.from('profiles').update({
-                    quick_pin: localPin || null,
-                    accent_color: accentHex || null,
+                    accent_color: accentHex,
                 }).eq('id', user.id));
             }
         } catch (e) {
-            // Ignore schema column mismatches gracefully
+            console.warn('[Selah Sync] Profile sync error:', e?.message || e);
         }
     } catch (err) {
-        // Silent catch
+        console.error('[Selah Sync] migrateDataToSupabase failed:', err?.message || err);
     }
 }
 
 async function syncSetlistToDexie(list) {
-    if (!list || !list.title) return;
+    if (!list || !list.title || !list.id) return;
+    const targetId = String(list.id);
     const songKeysObj = typeof list.song_keys === 'string'
         ? JSON.parse(list.song_keys)
         : (list.song_keys || list.songKeys || {});
 
-    const existing = await db.setlists.get(list.id);
-    if (existing && isRemoteNewer(existing.updatedAt, list.updated_at)) {
-      return; // local is newer, skip
+    const existing = await db.setlists.get(targetId);
+    if (existing && !isRemoteNewer(existing.updatedAt, list.updated_at)) {
+      return; // local is newer or equal, skip remote overwrite
     }
 
     await db.setlists.put({
-        id: list.id,
+        id: targetId,
+        userId: list.user_id || list.userId || null,
         title: list.title,
         date: list.date,
         notes: list.notes,
@@ -137,23 +141,47 @@ async function syncSetlistToDexie(list) {
     });
 }
 
-// ── Discreet Background Hydration ──
+// ── Discreet Background Hydration (bi-directional) ──
 export async function discreetBackgroundSync() {
     try {
+        // Get current authenticated user for push operations
+        const { data: { user } } = await supabase.auth.getUser();
+
+        // ── PUSH: Upload local setlists to Supabase ──
+        if (user) {
+            const localSetlists = await db.setlists.toArray();
+            for (const list of localSetlists) {
+                if (!list.id || !list.title) continue;
+                try {
+                    const songKeysObj = typeof list.songKeys === 'string'
+                        ? JSON.parse(list.songKeys)
+                        : (list.songKeys || {});
+
+                    await withRetry(() => supabase.from('setlists').upsert({
+                        id: String(list.id),
+                        user_id: list.userId || user.id,
+                        title: list.title,
+                        date: list.date,
+                        notes: list.notes,
+                        prepared_by: list.preparedBy || user.user_metadata?.username || user.email?.split('@')[0] || 'Worship Leader',
+                        song_ids: list.songIds || [],
+                        song_keys: songKeysObj,
+                        updated_at: list.updatedAt || new Date().toISOString()
+                    }));
+                } catch (pushErr) {
+                    console.warn('[Selah Sync] Push setlist failed:', list.title, pushErr?.message);
+                }
+            }
+        }
+
+        // ── PULL: Hydrate from Supabase into Dexie ──
         const { data: remoteSetlists, error: setlistErr } = await supabase.from('setlists').select('*');
+        if (setlistErr) {
+            console.error('[Selah Sync] Fetch setlists error:', setlistErr.message);
+        }
         if (!setlistErr && remoteSetlists) {
-            // Hydrate remote setlists
             for (const list of remoteSetlists) {
                 await syncSetlistToDexie(list);
-            }
-
-            // Remove local setlists that no longer exist on the remote
-            const remoteIds = new Set(remoteSetlists.map(l => String(l.id)));
-            const localSetlists = await db.setlists.toArray();
-            for (const local of localSetlists) {
-                if (!remoteIds.has(String(local.id))) {
-                    await db.setlists.delete(local.id);
-                }
             }
         }
 
@@ -163,12 +191,12 @@ export async function discreetBackgroundSync() {
             for (const song of remoteSongs) {
                 if (song.id) {
                     const targetId = !isNaN(Number(song.id)) ? Number(song.id) : song.id;
-                    const existing = await db.songs.get(String(targetId));
-                    if (existing && isRemoteNewer(existing.updatedAt, song.updated_at)) {
-                      continue; // local is newer, skip
+                    const existing = await db.songs.get(typeof targetId === 'number' ? targetId : String(targetId));
+                    if (existing && !isRemoteNewer(existing.updatedAt, song.updated_at)) {
+                      continue; // local is newer or equal, skip
                     }
                     if (typeof targetId === 'number') {
-                        await db.songs.delete(String(targetId));
+                        await db.songs.delete(targetId);
                     }
                     await db.songs.put({
                         id: targetId,
@@ -179,7 +207,9 @@ export async function discreetBackgroundSync() {
                         tempo: song.tempo,
                         category: song.category,
                         lyrics: song.lyrics,
-                        updatedAt: song.updated_at
+                        updatedAt: song.updated_at,
+                        language: song.language || existing?.language || 'English',
+                        tags: song.tags || existing?.tags || [song.category || 'Slow']
                     });
                 }
             }
@@ -187,28 +217,19 @@ export async function discreetBackgroundSync() {
 
         // Retry queued operations after successful fetch
         await processSyncQueue();
+        console.log('[Selah Sync] Background sync complete');
     } catch (err) {
-        // Silent catch
+        console.error('[Selah Sync] discreetBackgroundSync failed:', err?.message || err);
     }
 }
 
-export async function initRealtimeSync(user) {
-    if (!user) {
-        if (realtimeChannel) {
-            supabase.removeChannel(realtimeChannel);
-            realtimeChannel = null;
-        }
-        if (backgroundSyncTimer) {
-            clearInterval(backgroundSyncTimer);
-            backgroundSyncTimer = null;
-        }
-        return;
+export async function initRealtimeSync(user = null) {
+    // 1. Sync User Profile if authenticated
+    if (user) {
+        await migrateDataToSupabase(user);
     }
 
-    // 1. Sync User Profile
-    await migrateDataToSupabase(user);
-
-    // 2. Initial fetch & hydration for setlists & songs
+    // 2. Initial fetch & hydration for setlists & songs (works for both guests & logged in users)
     await discreetBackgroundSync();
 
     // 3. Start background sync interval every 30 seconds
@@ -230,7 +251,7 @@ export async function initRealtimeSync(user) {
                 await syncSetlistToDexie(payload.new);
                 
                 // NOTIFICATION: Notify other accounts when a setlist is created/scheduled!
-                if (payload.new.user_id && payload.new.user_id !== user.id) {
+                if (user && payload.new.user_id && payload.new.user_id !== user.id) {
                     const title = `📅 Worship Setlist Scheduled!`;
                     const body = `"${payload.new.title}" setlist scheduled for ${payload.new.date || 'upcoming service'} by ${payload.new.prepared_by || 'Worship Leader'}`;
                     sendSystemNotification(title, { body, url: '/setlists' });
@@ -241,12 +262,13 @@ export async function initRealtimeSync(user) {
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'songs' }, async (payload) => {
             if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-                const existing = await db.songs.get(payload.new.id);
+                const songId = !isNaN(Number(payload.new.id)) ? Number(payload.new.id) : payload.new.id;
+                const existing = await db.songs.get(songId);
                 if (existing && isRemoteNewer(existing.updatedAt, payload.new.updated_at)) {
                   return; // local is newer, skip
                 }
                 await db.songs.put({
-                    id: payload.new.id,
+                    id: songId,
                     title: payload.new.title,
                     artist: payload.new.artist,
                     originalKey: payload.new.original_key,
@@ -254,10 +276,13 @@ export async function initRealtimeSync(user) {
                     tempo: payload.new.tempo,
                     category: payload.new.category,
                     lyrics: payload.new.lyrics,
-                    updatedAt: payload.new.updated_at
+                    updatedAt: payload.new.updated_at,
+                    language: payload.new.language || existing?.language || 'English',
+                    tags: payload.new.tags || existing?.tags || [payload.new.category || 'Slow']
                 });
             } else if (payload.eventType === 'DELETE') {
-                await db.songs.delete(payload.old.id);
+                const songId = !isNaN(Number(payload.old.id)) ? Number(payload.old.id) : payload.old.id;
+                await db.songs.delete(songId);
             }
         })
         .subscribe();
@@ -283,9 +308,11 @@ export async function pushSetlistToSupabase(setlist, user, opts = {}) {
             : (setlist.songKeys || {});
 
         const now = new Date().toISOString();
+        const setlistUserId = setlist.userId || user.id;
+
         await withRetry(() => supabase.from('setlists').upsert({
             id: String(setlist.id),
-            user_id: user.id,
+            user_id: setlistUserId,
             title: setlist.title,
             date: setlist.date,
             notes: setlist.notes,
@@ -294,7 +321,12 @@ export async function pushSetlistToSupabase(setlist, user, opts = {}) {
             song_keys: songKeysObj,
             updated_at: now
         }));
+
+        console.log('[Selah Sync] Setlist pushed to Supabase:', setlist.title);
+        // Update local Dexie to stay in sync with remote timestamp and userId
+        await db.setlists.update(String(setlist.id), { updatedAt: now, userId: setlistUserId });
     } catch (err) {
+        console.error('[Selah Sync] pushSetlistToSupabase FAILED:', err?.message || err);
         if (!opts.skipQueue) {
           await queueFailedOperation({ type: 'pushSetlist', payload: setlist, user });
         }
@@ -302,6 +334,7 @@ export async function pushSetlistToSupabase(setlist, user, opts = {}) {
 }
 
 export async function deleteSetlistFromSupabase(setlistId, user, opts = {}) {
+    if (!user || !setlistId) return;
     try {
         const idStr = String(setlistId);
         await withRetry(() => supabase.from('setlists').delete().eq('id', idStr));

@@ -35,18 +35,18 @@ export default function Sidebar({ isOpen, onClose, onOpenProfileSettings }) {
 
             {/* Sidebar Content Drawer with Smooth Slide-in / Slide-out */}
             <div
-                className={`fixed top-0 bottom-0 left-0 w-72 max-w-[85vw] h-full bg-elevated border-r border-white/10 flex flex-col justify-between p-5 shadow-2xl z-10 transform-gpu transition-transform duration-300 cubic-bezier(0.16,1,0.3,1) ${
+                className={`fixed top-0 bottom-0 left-0 w-72 max-w-[85vw] h-full bg-elevated border-r border-themed flex flex-col justify-between p-5 shadow-2xl z-10 transform-gpu transition-transform duration-300 cubic-bezier(0.16,1,0.3,1) ${
                     isOpen ? 'translate-x-0' : '-translate-x-full'
                 }`}
             >
                 {/* Top Section */}
                 <div className="space-y-6">
                     {/* Header */}
-                    <div className="flex items-center justify-between pt-4 pb-2 border-b border-white/10">
+                    <div className="flex items-center justify-between pt-4 pb-2 border-b border-themed">
                         <AppLogo size="md" showText={true} />
                         <button
                             onClick={onClose}
-                            className="p-2 rounded-xl text-textmuted hover:text-white hover:bg-white/5 active:scale-95 transition"
+                            className="p-2 rounded-xl text-textmuted hover:text-textprimary hover:bg-surface-hover active:scale-95 transition"
                             title="Close Sidebar"
                         >
                             <X className="w-5 h-5" />
@@ -64,15 +64,15 @@ export default function Sidebar({ isOpen, onClose, onOpenProfileSettings }) {
                             onClick={() => handleNav('/library')}
                             className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl text-sm font-semibold transition-all min-h-[48px] ${
                                 isLibraryActive
-                                    ? 'bg-accent text-primary font-bold shadow-lg shadow-accent/20'
-                                    : 'text-textprimary hover:bg-white/5 active:bg-white/10'
+                                    ? 'bg-accent text-onaccent font-bold shadow-lg shadow-accent/20'
+                                    : 'text-textprimary hover:bg-surface-hover active:bg-surface-active'
                             }`}
                         >
                             <div className="flex items-center gap-3">
                                 <Library className="w-5 h-5" />
                                 <span>Song Library</span>
                             </div>
-                            <ChevronRight className={`w-4 h-4 opacity-60 ${isLibraryActive ? 'text-primary' : 'text-textmuted'}`} />
+                            <ChevronRight className={`w-4 h-4 opacity-60 ${isLibraryActive ? 'text-onaccent' : 'text-textmuted'}`} />
                         </button>
 
                         {/* Song Lineup */}
@@ -80,21 +80,21 @@ export default function Sidebar({ isOpen, onClose, onOpenProfileSettings }) {
                             onClick={() => handleNav('/setlists')}
                             className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl text-sm font-semibold transition-all min-h-[48px] ${
                                 isSetlistActive
-                                    ? 'bg-accent text-primary font-bold shadow-lg shadow-accent/20'
-                                    : 'text-textprimary hover:bg-white/5 active:bg-white/10'
+                                    ? 'bg-accent text-onaccent font-bold shadow-lg shadow-accent/20'
+                                    : 'text-textprimary hover:bg-surface-hover active:bg-surface-active'
                             }`}
                         >
                             <div className="flex items-center gap-3">
                                 <Calendar className="w-5 h-5" />
                                 <span>Song Lineup</span>
                             </div>
-                            <ChevronRight className={`w-4 h-4 opacity-60 ${isSetlistActive ? 'text-primary' : 'text-textmuted'}`} />
+                            <ChevronRight className={`w-4 h-4 opacity-60 ${isSetlistActive ? 'text-onaccent' : 'text-textmuted'}`} />
                         </button>
                     </nav>
                 </div>
 
                 {/* Bottom Section */}
-                <div className="space-y-3 pt-6 border-t border-white/10">
+                <div className="space-y-3 pt-6 border-t border-themed">
                     <p className="text-[10px] font-bold text-textmuted tracking-widest uppercase px-3">
                         Account & App
                     </p>
@@ -105,7 +105,7 @@ export default function Sidebar({ isOpen, onClose, onOpenProfileSettings }) {
                             onClose();
                             onOpenProfileSettings();
                         }}
-                        className="w-full flex items-center justify-between px-4 py-3.5 rounded-2xl bg-secondary/70 border border-white/10 hover:border-accent text-textprimary hover:text-white transition-all min-h-[48px] active:scale-98"
+                        className="w-full flex items-center justify-between px-4 py-3.5 rounded-2xl bg-secondary border border-themed hover:border-accent text-textprimary transition-all min-h-[48px] active:scale-98"
                     >
                         <div className="flex items-center gap-3">
                             <User className="w-5 h-5 text-accent" />
