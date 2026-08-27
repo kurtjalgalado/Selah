@@ -951,16 +951,16 @@ export function PrintSetlistModal({ setlist, onClose }) {
 
     return (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 overflow-y-auto p-3 sm:p-6 flex flex-col items-center animate-fadeIn">
-            {/* Revamped High-Contrast Action Bar */}
-            <div className="sticky top-2 sm:top-4 z-50 w-full max-w-4xl bg-elevated/95 border border-themed px-4 sm:px-6 py-3 rounded-2xl shadow-2xl backdrop-blur-xl flex flex-wrap items-center justify-between gap-3 mb-6 print:hidden">
+            {/* Solid Opaque High-Contrast Action Bar */}
+            <div className="sticky top-2 sm:top-4 z-50 w-full max-w-4xl bg-zinc-900 border border-zinc-700/80 px-4 sm:px-6 py-3 rounded-2xl shadow-2xl flex flex-wrap items-center justify-between gap-3 mb-6 print:hidden">
                 {/* Title & Metadata */}
                 <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-accent/20 border border-accent/40 flex items-center justify-center text-accent shrink-0">
                         <Printer className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
-                        <h3 className="font-bold text-textprimary text-sm sm:text-base truncate">{setlist.title}</h3>
-                        <p className="text-[11px] text-textmuted truncate">
+                        <h3 className="font-bold text-white text-sm sm:text-base truncate">{setlist.title}</h3>
+                        <p className="text-[11px] text-zinc-400 truncate">
                             {setlistSongs.length} songs • {pages.length} {pages.length === 1 ? 'page' : 'pages'} A4
                         </p>
                     </div>
@@ -969,13 +969,13 @@ export function PrintSetlistModal({ setlist, onClose }) {
                 {/* Print Layout Segmented Toggle & Actions */}
                 <div className="flex items-center gap-2.5 shrink-0 ml-auto">
                     {/* 1-Col vs 2-Col Layout Switch */}
-                    <div className="flex items-center bg-secondary p-1 rounded-xl border border-themed">
+                    <div className="flex items-center bg-zinc-800 p-1 rounded-xl border border-zinc-700">
                         <button
                             onClick={() => setColumns(1)}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                                 columns === 1 
-                                    ? 'bg-accent text-onaccent shadow-sm' 
-                                    : 'text-textmuted hover:text-textprimary'
+                                    ? 'bg-accent text-zinc-950 shadow-md' 
+                                    : 'text-zinc-400 hover:text-white'
                             }`}
                             title="1 Song per Page (Large / Single Column)"
                         >
@@ -985,8 +985,8 @@ export function PrintSetlistModal({ setlist, onClose }) {
                             onClick={() => setColumns(2)}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                                 columns === 2 
-                                    ? 'bg-accent text-onaccent shadow-sm' 
-                                    : 'text-textmuted hover:text-textprimary'
+                                    ? 'bg-accent text-zinc-950 shadow-md' 
+                                    : 'text-zinc-400 hover:text-white'
                             }`}
                             title="2 Songs per Page (2-Column Compact)"
                         >
@@ -997,7 +997,7 @@ export function PrintSetlistModal({ setlist, onClose }) {
                     {/* Print Button */}
                     <button
                         onClick={handlePrintTrigger}
-                        className="px-4 h-10 rounded-xl bg-accent text-onaccent font-bold text-xs flex items-center gap-2 shadow-lg shadow-accent/25 active:scale-95 transition-all"
+                        className="px-4 h-10 rounded-xl bg-accent text-zinc-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-accent/25 hover:bg-accent/90 active:scale-95 transition-all"
                         title="Print / Save as PDF"
                     >
                         <Printer className="w-4 h-4 fill-current" />
@@ -1007,7 +1007,7 @@ export function PrintSetlistModal({ setlist, onClose }) {
                     {/* Close Button */}
                     <button
                         onClick={onClose}
-                        className="w-10 h-10 rounded-xl bg-secondary text-textmuted hover:text-textprimary flex items-center justify-center border border-themed transition-colors"
+                        className="w-10 h-10 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center border border-zinc-700 transition-colors"
                         title="Close Preview"
                     >
                         <X className="w-5 h-5" />

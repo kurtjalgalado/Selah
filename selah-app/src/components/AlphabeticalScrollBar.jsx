@@ -134,18 +134,14 @@ export default function AlphabeticalScrollBar({
                 </div>
             )}
 
-            {/* Scroll Bar Track Container (Spans full available height with generous letter spacing) */}
+            {/* Scroll Bar Track Container (100% Transparent, No Background) */}
             <div
                 ref={containerRef}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerCancel={handlePointerUp}
-                className={`flex flex-col justify-between items-center py-2.5 px-1.5 sm:px-2 rounded-full transition-all duration-200 cursor-pointer h-full ${
-                    isInteracting
-                        ? 'bg-elevated/85 backdrop-blur-xl shadow-xl shadow-black/50 w-7.5 sm:w-8.5'
-                        : 'bg-elevated/25 hover:bg-elevated/60 backdrop-blur-sm w-6.5 sm:w-7.5'
-                }`}
+                className="flex flex-col justify-between items-center py-1 px-0.5 sm:px-1 select-none cursor-pointer h-full bg-transparent border-0 outline-none w-6 sm:w-7"
             >
                 {displayList.map((item, idx) => {
                     const isDivider = item.isDivider;

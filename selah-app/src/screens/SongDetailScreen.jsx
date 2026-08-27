@@ -568,15 +568,15 @@ export function SongPrintModal({ song, currentKey, originalKey, transposeAmount,
 
     return (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 overflow-y-auto p-3 sm:p-6 flex flex-col items-center animate-fadeIn">
-            {/* Action Bar */}
-            <div className="sticky top-2 sm:top-4 z-50 w-full max-w-3xl bg-elevated/95 border border-themed px-4 sm:px-6 py-3 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 mb-6 print:hidden">
+            {/* Solid Opaque High-Contrast Action Bar */}
+            <div className="sticky top-2 sm:top-4 z-50 w-full max-w-3xl bg-zinc-900 border border-zinc-700/80 px-4 sm:px-6 py-3 rounded-2xl shadow-2xl flex items-center justify-between gap-3 mb-6 print:hidden">
                 <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-accent/20 border border-accent/40 flex items-center justify-center text-accent shrink-0">
                         <Printer className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
-                        <h3 className="font-bold text-textprimary text-sm sm:text-base truncate">{song?.title}</h3>
-                        <p className="text-[11px] text-textmuted truncate">
+                        <h3 className="font-bold text-white text-sm sm:text-base truncate">{song?.title}</h3>
+                        <p className="text-[11px] text-zinc-400 truncate">
                             Key: {currentKey} • Single Column Chord Chart (A4)
                         </p>
                     </div>
@@ -585,7 +585,7 @@ export function SongPrintModal({ song, currentKey, originalKey, transposeAmount,
                 <div className="flex items-center gap-2.5 shrink-0">
                     <button
                         onClick={handlePrint}
-                        className="px-4 h-10 rounded-xl bg-accent text-onaccent font-bold text-xs flex items-center gap-2 shadow-lg shadow-accent/25 active:scale-95 transition-all"
+                        className="px-4 h-10 rounded-xl bg-accent text-zinc-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-accent/25 hover:bg-accent/90 active:scale-95 transition-all"
                         title="Print / Save PDF"
                     >
                         <Printer className="w-4 h-4 fill-current" />
@@ -593,7 +593,7 @@ export function SongPrintModal({ song, currentKey, originalKey, transposeAmount,
                     </button>
                     <button
                         onClick={onClose}
-                        className="w-10 h-10 rounded-xl bg-secondary text-textmuted hover:text-textprimary flex items-center justify-center border border-themed transition-colors"
+                        className="w-10 h-10 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center border border-zinc-700 transition-colors"
                         title="Close"
                     >
                         <X className="w-5 h-5" />
