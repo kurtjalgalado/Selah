@@ -1,29 +1,38 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { setlistDB, getSongByIdOrTitle } from '../db/dexie';
+import { setlistDB, scheduleDB, getSongByIdOrTitle } from '../db/dexie';
 import { useSongCache } from '../context/SongCacheContext';
 import { useAuth } from '../auth/AuthContext';
-import { pushSetlistToSupabase, deleteSetlistFromSupabase, discreetBackgroundSync } from '../supabase/sync';
+import { pushSetlistToSupabase, pushScheduleToSupabase, getUserChurchId, deleteSetlistFromSupabase, deleteScheduleFromSupabase, discreetBackgroundSync } from '../supabase/sync';
 import PullToRefresh from '../components/PullToRefresh';
-import { KEYS, getKeyIndex, semitonesBetween, transposeLyrics } from '../utils/chords';
-import { parseLyrics, isChordLine, separateChords } from '../utils/lyrics';
+import { KEYS, getKeyIndex, semitonesBetween, transposeLyrics, formatKey, stripChords } from '../utils/chords';
+import { parseLyrics, isChordLine } from '../utils/lyrics';
+import { DEFAULT_WORSHIP_ROLES } from '../utils/instruments';
+import { useBackHandler } from '../utils/backHandler';
 import { haptic } from '../utils/haptics';
-import { Menu, Plus, Calendar, ChevronLeft, Trash2, Music, GripVertical, X, Clock, Search, Layers, Play, Printer, Check, ChevronUp, ChevronDown, User, Save, Edit3, Lock, RotateCcw } from 'lucide-react';
-import { useContext } from 'react';
-import { UIContext } from '../App';
+import { List as Menu, Plus, CalendarBlank as Calendar, CaretLeft as ChevronLeft, Trash as Trash2, MusicNotes as Music, DotsSixVertical as GripVertical, X, Clock, MagnifyingGlass as Search, Stack as Layers, Play, Printer, Check, CaretUp as ChevronUp, CaretDown as ChevronDown, User, FloppyDisk as Save, PencilSimple as Edit3, Lock, ArrowCounterClockwise as RotateCcw } from '@phosphor-icons/react';
 import AppLogo from '../components/AppLogo';
+import TopBarNotificationBell from '../components/TopBarNotificationBell';
 import { SetlistSkeletonCards } from '../components/SkeletonLoader';
+import ChordLineRenderer from '../components/ChordLineRenderer';
+import PrintFrame from '../components/PrintFrame';
 
 export default function SetlistScreen() {
     const navigate = useNavigate();
-    const { user } = useAuth();
-    const { openSidebar } = useContext(UIContext);
+    const { user, canManageSetlists, isSuperuser, isAdmin } = useAuth();
     const [showAddModal, setShowAddModal] = useState(false);
     const [printSetlistData, setPrintSetlistData] = useState(null);
+
+    useBackHandler(showAddModal, () => setShowAddModal(false));
+    useBackHandler(Boolean(printSetlistData), () => setPrintSetlistData(null));
 
     const handleOpenAddModal = () => {
         if (!user) {
             navigate('/login');
+            return;
+        }
+        if (!canManageSetlists) {
             return;
         }
         setShowAddModal(true);
@@ -59,18 +68,76 @@ export default function SetlistScreen() {
                         <div className="flex items-center justify-between">
                             <AppLogo size="md" showText={true} />
 
-                            <div className="flex items-center gap-1.5 text-xs text-textmuted bg-secondary border border-themed px-3 py-1.5 rounded-2xl">
-                                <Calendar className="w-3.5 h-3.5 text-accent" />
-                                <span className="font-bold text-textprimary">{upcomingSetlists.length}</span>
-                                <span>Upcoming</span>
+                            <div className="flex items-center gap-2">
+                                <TopBarNotificationBell />
+
+                                {user && canManageSetlists && (
+                                    <button
+                                        onClick={handleOpenAddModal}
+                                        className="hidden md:inline-flex items-center gap-1.5 bg-accent text-onaccent px-3.5 py-1.5 rounded-2xl text-xs font-bold shadow-md shadow-accent/20 hover:brightness-110 active:scale-95 transition"
+                                        title="Create Worship Lineup"
+                                    >
+                                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                                        <span>Create Lineup</span>
+                                    </button>
+                                )}
+
+                                {user ? (
+                                    <div className="flex items-center gap-1.5 text-xs text-textmuted bg-secondary border border-themed px-3 py-1.5 rounded-2xl">
+                                        <Calendar className="w-3.5 h-3.5 text-accent" />
+                                        <span className="font-bold text-textprimary">{upcomingSetlists.length}</span>
+                                        <span>Upcoming</span>
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={() => {
+                                            haptic('light');
+                                            navigate('/login');
+                                        }}
+                                        className="flex items-center gap-1.5 text-xs text-accent bg-accent/10 border border-accent/30 px-3 py-1.5 rounded-2xl hover:bg-accent/20 transition font-bold"
+                                    >
+                                        <Lock className="w-3.5 h-3.5" />
+                                        <span>Sign In</span>
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
                 </header>
 
                 {/* Setlist List Container */}
-                <div className="px-5 py-4 space-y-6">
-                    {!setlists ? (
+                <div className="px-5 sm:px-8 py-5 space-y-6 max-w-5xl mx-auto">
+                    {!user ? (
+                        <div className="relative overflow-hidden rounded-3xl bg-elevated border border-themed p-8 sm:p-10 text-center shadow-2xl backdrop-blur-xl max-w-lg mx-auto mt-4 space-y-4">
+                            <div className="absolute -top-12 -right-12 w-44 h-44 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+                            <div className="absolute -bottom-12 -left-12 w-44 h-44 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+                            <div className="relative z-10 space-y-4">
+                                <div className="w-16 h-16 rounded-3xl bg-accent/15 border border-accent/30 text-accent flex items-center justify-center mx-auto shadow-xl shadow-accent/15 glow-accent">
+                                    <Lock className="w-8 h-8" />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <h3 className="text-lg font-bold text-textprimary tracking-wide">
+                                        Sign In to See Worship Setlists
+                                    </h3>
+                                    <p className="text-xs text-textmuted leading-relaxed max-w-xs mx-auto">
+                                        Worship service lineups, transposed chord charts, and rehearsal notes are private to your church team.
+                                    </p>
+                                </div>
+                                <div className="pt-2">
+                                    <button
+                                        onClick={() => {
+                                            haptic('light');
+                                            navigate('/login');
+                                        }}
+                                        className="px-6 py-3.5 bg-accent text-onaccent rounded-2xl text-xs font-bold shadow-lg shadow-accent/20 active:scale-95 transition-all flex items-center gap-2 mx-auto"
+                                    >
+                                        <User className="w-4 h-4" />
+                                        <span>Sign In to Selah</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : !setlists ? (
                         <SetlistSkeletonCards />
                     ) : setlists.length === 0 ? (
                         <div className="text-center py-20 bg-elevated rounded-3xl border border-themed p-8">
@@ -81,21 +148,23 @@ export default function SetlistScreen() {
                             <p className="text-textmuted text-xs max-w-xs mx-auto mb-6">
                                 Create your first setlist to arrange songs and print 2-songs-per-page A4 charts.
                             </p>
-                            <button
-                                onClick={handleOpenAddModal}
-                                className="px-6 py-3.5 bg-accent text-onaccent rounded-xl text-xs font-bold shadow-lg shadow-accent/20 active:bg-yellow-300 min-h-[44px] flex items-center gap-2 mx-auto"
-                            >
-                                {!user && <User className="w-4 h-4" />}
-                                <span>{user ? 'Create Worship Setlist' : 'Sign In to Create Setlist'}</span>
-                            </button>
+                            {canManageSetlists && (
+                                <button
+                                    onClick={handleOpenAddModal}
+                                    className="px-6 py-3.5 bg-accent text-onaccent rounded-xl text-xs font-bold shadow-lg shadow-accent/20 active:bg-yellow-300 min-h-[44px] flex items-center gap-2 mx-auto"
+                                >
+                                    <Plus className="w-4 h-4 stroke-[2.5]" />
+                                    <span>Create Worship Setlist</span>
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <>
                             {/* Upcoming Setlists Section */}
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between px-1">
-                                    <h2 className="text-xs font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
-                                        <Calendar className="w-4 h-4" /> Upcoming Services ({upcomingSetlists.length})
+                                    <h2 className="text-xs font-semibold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
+                                        <Calendar className="w-4 h-4 text-accent" /> Upcoming Services ({upcomingSetlists.length})
                                     </h2>
                                 </div>
                                 {upcomingSetlists.length === 0 ? (
@@ -112,15 +181,17 @@ export default function SetlistScreen() {
                                                     Plan your worship service, arrange song keys, and print 2-songs-per-page A4 chord charts.
                                                 </p>
                                             </div>
-                                            <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
-                                                <button
-                                                    onClick={handleOpenAddModal}
-                                                    className="px-5 py-2.5 bg-accent text-onaccent rounded-xl text-xs font-bold shadow-lg shadow-accent/20 active:scale-95 transition-all min-h-[40px] flex items-center gap-1.5"
-                                                >
-                                                    {user ? <Plus className="w-4 h-4" strokeWidth={2.5} /> : <User className="w-4 h-4" />}
-                                                    <span>{user ? 'Create Worship Lineup' : 'Sign In to Create Lineup'}</span>
-                                                </button>
-                                            </div>
+                                            {canManageSetlists && (
+                                                <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+                                                    <button
+                                                        onClick={handleOpenAddModal}
+                                                        className="px-5 py-2.5 bg-accent text-onaccent rounded-xl text-xs font-bold shadow-lg shadow-accent/20 active:scale-95 transition-all min-h-[40px] flex items-center gap-1.5"
+                                                    >
+                                                        <Plus className="w-4 h-4" strokeWidth={2.5} />
+                                                        <span>Create Worship Lineup</span>
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 ) : (
@@ -139,10 +210,9 @@ export default function SetlistScreen() {
                             {pastSetlists.length > 0 && (
                                 <div className="space-y-3 pt-4 border-t border-themed">
                                     <div className="flex items-center justify-between px-1">
-                                        <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
-                                            <Clock className="w-4 h-4" /> Past Services ({pastSetlists.length})
+                                        <h2 className="text-xs font-semibold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
+                                            <Clock className="w-4 h-4 text-textmuted" /> Past Services ({pastSetlists.length})
                                         </h2>
-                                        <span className="text-[10px] text-textmuted italic">Edit date to reuse for upcoming service</span>
                                     </div>
                                     <div className="space-y-3">
                                         {pastSetlists.map(setlist => (
@@ -160,23 +230,15 @@ export default function SetlistScreen() {
                     )}
                 </div>
 
-                {user ? (
+                {user && canManageSetlists && typeof document !== 'undefined' && createPortal(
                     <button
                         onClick={handleOpenAddModal}
-                        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-24 right-5 sm:right-6 w-14 h-14 min-w-[56px] min-h-[56px] rounded-full bg-accent text-onaccent flex items-center justify-center shadow-2xl shadow-black/80 glow-accent z-30 active:scale-95 transition-transform"
-                        title="Create Setlist"
+                        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:bottom-8 right-5 md:right-8 w-14 h-14 min-w-[56px] min-h-[56px] rounded-full bg-accent text-onaccent flex items-center justify-center shadow-2xl shadow-black/80 glow-accent z-40 active:scale-95 transition-transform"
+                        title="Create Lineup"
                     >
                         <Plus className="w-6 h-6 stroke-[3]" />
-                    </button>
-                ) : (
-                    <button
-                        onClick={() => navigate('/login')}
-                        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-24 right-5 sm:right-6 px-5 h-12 bg-accent text-onaccent font-bold text-xs rounded-full shadow-2xl shadow-black/80 glow-accent z-30 flex items-center gap-2 active:scale-95 transition-transform"
-                        title="Sign In to Create Setlist"
-                    >
-                        <User className="w-4 h-4" />
-                        <span>Sign In to Create Setlist</span>
-                    </button>
+                    </button>,
+                    document.body
                 )}
 
                 {showAddModal && <AddSetlistModal onClose={() => setShowAddModal(false)} />}
@@ -193,15 +255,92 @@ export default function SetlistScreen() {
     );
 }
 
+// ── Dynamic Date Badge Component (Day and Month) ──
+export function SetlistDateBadge({ date, isToday = false, isPast = false, size = 'md', className = '' }) {
+    // Parse scheduled date string (YYYY-MM-DD or standard date)
+    const parseBadgeDate = (dStr) => {
+        if (!dStr) {
+            const now = new Date();
+            return {
+                month: now.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
+                day: String(now.getDate())
+            };
+        }
+        const parts = String(dStr).split('-');
+        if (parts.length === 3) {
+            const year = parseInt(parts[0], 10);
+            const monthIdx = parseInt(parts[1], 10) - 1;
+            const day = parseInt(parts[2], 10);
+            const d = new Date(year, monthIdx, day);
+            if (!isNaN(d.getTime())) {
+                return {
+                    month: d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
+                    day: String(day)
+                };
+            }
+        }
+        const d = new Date(dStr);
+        if (!isNaN(d.getTime())) {
+            return {
+                month: d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
+                day: String(d.getDate())
+            };
+        }
+        return { month: 'SET', day: '•' };
+    };
+
+    const { month, day } = parseBadgeDate(date);
+
+    return (
+        <div
+            className={`rounded-2xl border flex flex-col items-center justify-between shrink-0 overflow-hidden text-center select-none transition-transform duration-200 shadow-sm ${
+                size === 'sm' ? 'w-9 h-9' : 'w-11 h-11'
+            } ${
+                isToday
+                    ? 'bg-activeservice-badge border-activeservice-border/70 text-activeservice-text ring-1 ring-activeservice-border/40'
+                    : isPast
+                    ? 'bg-secondary border-themed text-textmuted'
+                    : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+            } ${className}`}
+            title={`Scheduled: ${date || 'Undated'}`}
+        >
+            <div
+                className={`w-full text-center font-black uppercase tracking-wider leading-none ${
+                    size === 'sm' ? 'text-[7.5px] py-0.5' : 'text-[8.5px] py-1'
+                } ${
+                    isToday
+                        ? 'bg-activeservice-text/15 text-activeservice-text'
+                        : isPast
+                        ? 'bg-secondary text-textmuted/80'
+                        : 'bg-emerald-500/20 text-emerald-400'
+                }`}
+            >
+                {month}
+            </div>
+            <div
+                className={`flex-1 flex items-center justify-center font-black leading-none pb-0.5 tracking-tight ${
+                    size === 'sm' ? 'text-xs' : 'text-[15px]'
+                }`}
+            >
+                {day}
+            </div>
+        </div>
+    );
+}
+
 // ── Modernized Setlist Card ──
 export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, canManageSetlists, isSuperuser, isAdmin } = useAuth();
     const [expanded, setExpanded] = useState(false);
     const [showSongPicker, setShowSongPicker] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [pickerSearch, setPickerSearch] = useState('');
     const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+    useBackHandler(showSongPicker, () => setShowSongPicker(false));
+    useBackHandler(showEditModal, () => setShowEditModal(false));
+    useBackHandler(showDeleteModal, () => setShowDeleteModal(false));
 
     // Lock body scroll when modals are open
     useEffect(() => {
@@ -212,8 +351,8 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
         }
     }, [showSongPicker, showEditModal, showDeleteModal]);
 
-    // Creator permission check: Only creator can edit setlist details, reorder, add/remove songs, delete, or change keys
-    const isOwner = !setlist.userId || (user && String(setlist.userId) === String(user.id));
+    // Creator permission check: Only creator or admins/superusers can edit setlist details, reorder, add/remove songs, delete, or change keys
+    const isOwner = canManageSetlists && (!setlist.userId || (user && String(setlist.userId) === String(user.id)) || isSuperuser || isAdmin);
 
     // Active setlist check: matches today's date (YYYY-MM-DD)
     const now = new Date();
@@ -288,6 +427,21 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
         if (!isOwner) return;
         setShowDeleteModal(false);
         haptic('error');
+        try {
+            // Find and delete any associated minister schedule entry linked to this setlist
+            const linkedSchedules = await scheduleDB.getAll().then(all => 
+                (all || []).filter(s => s && (
+                    String(s.setlistId) === String(setlist.id) ||
+                    (!s.setlistId && s.serviceDate === setlist.date && (s.serviceTitle || '').trim().toLowerCase() === (setlist.title || '').trim().toLowerCase())
+                ))
+            );
+            for (const sched of linkedSchedules) {
+                await deleteScheduleFromSupabase(sched.id, user);
+                await scheduleDB.delete(sched.id);
+            }
+        } catch (schedErr) {
+            console.warn('Failed to delete associated schedule:', schedErr);
+        }
         await deleteSetlistFromSupabase(setlist.id, user);
         await setlistDB.delete(setlist.id);
     };
@@ -443,9 +597,13 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
     };
 
     const filteredPickerSongs = (allSongs || []).filter(s => {
-        const q = pickerSearch.toLowerCase();
+        const q = pickerSearch.toLowerCase().trim();
+        if (!q) return true;
+        const cleanLyrics = s.lyrics ? stripChords(s.lyrics).toLowerCase() : '';
         return (s.title || '').toLowerCase().includes(q) ||
-            (s.artist || '').toLowerCase().includes(q);
+            (s.artist || '').toLowerCase().includes(q) ||
+            (s.lyrics || '').toLowerCase().includes(q) ||
+            cleanLyrics.includes(q);
     });
 
     const swipeProgress = cardRef.current ? Math.min(Math.abs(swipeX) / (cardRef.current.offsetWidth * SWIPE_THRESHOLD), 1) : 0;
@@ -505,15 +663,7 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
                     onClick={() => !isSwiping && setExpanded(!expanded)}
                 >
                     <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                        <div className={`w-11 h-11 rounded-2xl border flex items-center justify-center shrink-0 transition-transform duration-200 ${
-                            isToday
-                                ? 'bg-activeservice-badge border-activeservice-border/60 text-activeservice-text shadow-sm'
-                                : isPast
-                                ? 'bg-secondary border-themed text-textmuted'
-                                : 'bg-accent/10 border-accent/20 text-accent'
-                        }`}>
-                            <Calendar className="w-5.5 h-5.5" />
-                        </div>
+                        <SetlistDateBadge date={setlist.date} isToday={isToday} isPast={isPast} />
                         <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-bold text-base text-textprimary truncate leading-tight">{setlist.title}</h3>
@@ -576,7 +726,7 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
                         {isOwner && isPast && (
                             <button
                                 onClick={() => setShowEditModal(true)}
-                                className="h-10 px-3 bg-accent/20 border border-accent/40 text-accent rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:bg-accent/30 min-h-[40px]"
+                                className="h-10 px-3 bg-accent/20 text-accent rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:bg-accent/30 min-h-[40px] border-0 hover:bg-accent/25 transition-all"
                                 title="Reuse Setlist for Upcoming Service"
                             >
                                 <RotateCcw className="w-4 h-4 text-accent" />
@@ -587,7 +737,7 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
                         {isOwner && (
                             <button
                                 onClick={() => setShowSongPicker(true)}
-                                className="h-10 px-3 bg-secondary border border-themed text-textprimary rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:bg-surface-active min-h-[40px]"
+                                className="h-10 px-3 bg-secondary hover:bg-surface-hover text-textprimary rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:bg-surface-active min-h-[40px] border-0 transition-all"
                             >
                                 <Plus className="w-4 h-4 text-accent" strokeWidth={2.5} />
                                 <span>Add Songs</span>
@@ -597,7 +747,7 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
                         {isOwner && (
                             <button
                                 onClick={() => setShowEditModal(true)}
-                                className="h-10 px-3 bg-secondary border border-themed text-textprimary rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:bg-surface-active min-h-[40px]"
+                                className="h-10 px-3 bg-secondary hover:bg-surface-hover text-textprimary rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:bg-surface-active min-h-[40px] border-0 transition-all"
                                 title="Edit Setlist Details"
                             >
                                 <Edit3 className="w-4 h-4 text-accent" />
@@ -607,7 +757,7 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
 
                         <button
                             onClick={onPrint}
-                            className="h-10 px-3 bg-secondary border border-themed text-textprimary rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:bg-surface-active min-h-[40px]"
+                            className="h-10 px-3 bg-secondary hover:bg-surface-hover text-textprimary rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:bg-surface-active min-h-[40px] border-0 transition-all"
                         >
                             <Printer className="w-4 h-4 text-accent" />
                             <span>Print Chart</span>
@@ -615,7 +765,7 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
 
                         <button
                             onClick={handleSaveSetlist}
-                            className="h-10 px-3 bg-secondary border border-themed text-textprimary rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:bg-surface-active min-h-[40px]"
+                            className="h-10 px-3 bg-secondary hover:bg-surface-hover text-textprimary rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:bg-surface-active min-h-[40px] border-0"
                             title="Force Sync Setlist to Cloud"
                         >
                             {saveStatus === 'Saved!' ? (
@@ -699,7 +849,7 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
                                                 {/* Song Info */}
                                                 <div
                                                     className="flex-1 min-w-0 cursor-pointer"
-                                                    onClick={() => navigate(`/song/${song.id}`)}
+                                                    onClick={() => navigate(`/song/${song.id}?setlistId=${setlist.id}&key=${encodeURIComponent(currentKey)}`)}
                                                 >
                                                     <h4 className="text-sm font-medium text-textprimary truncate leading-snug group-hover:text-accent transition-colors">{song.title}</h4>
                                                     <p className="text-xs text-textmuted truncate">
@@ -711,7 +861,7 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
                                                 {isOwner && (
                                                     <button
                                                         onClick={(e) => handleRemoveSong(e, song.id)}
-                                                        className="w-8 h-8 rounded-full text-textmuted hover:text-danger hover:bg-danger/15 flex items-center justify-center shrink-0 active:scale-90 transition"
+                                                        className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full text-textmuted hover:text-danger hover:bg-danger/15 flex items-center justify-center shrink-0 active:scale-90 transition"
                                                         title="Remove from Setlist"
                                                     >
                                                         <X className="w-4 h-4" />
@@ -727,31 +877,31 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
                                                         <button
                                                             onClick={(e) => moveSongUp(e, idx)}
                                                             disabled={idx === 0}
-                                                            className="px-2 py-1 rounded-lg text-textmuted hover:text-textprimary disabled:opacity-20 flex items-center gap-0.5 text-xs"
+                                                            className="min-h-[36px] min-w-[36px] px-2.5 py-1.5 rounded-lg text-textmuted hover:text-textprimary disabled:opacity-20 flex items-center gap-1 text-xs active:bg-secondary"
                                                             title="Move Up"
                                                         >
-                                                            <ChevronUp className="w-3.5 h-3.5 text-accent" />
-                                                            <span className="text-[10px]">Up</span>
+                                                            <ChevronUp className="w-4 h-4 text-accent" />
+                                                            <span className="text-xs font-semibold">Up</span>
                                                         </button>
                                                         <button
                                                             onClick={(e) => moveSongDown(e, idx)}
                                                             disabled={idx === setlistSongs.length - 1}
-                                                            className="px-2 py-1 rounded-lg text-textmuted hover:text-textprimary disabled:opacity-20 flex items-center gap-0.5 text-xs"
+                                                            className="min-h-[36px] min-w-[36px] px-2.5 py-1.5 rounded-lg text-textmuted hover:text-textprimary disabled:opacity-20 flex items-center gap-1 text-xs active:bg-secondary"
                                                             title="Move Down"
                                                         >
-                                                            <ChevronDown className="w-3.5 h-3.5 text-accent" />
-                                                            <span className="text-[10px]">Down</span>
+                                                            <ChevronDown className="w-4 h-4 text-accent" />
+                                                            <span className="text-xs font-semibold">Down</span>
                                                         </button>
                                                     </div>
                                                 ) : (
-                                                    <span className="text-[10px] text-textmuted italic">Track {idx + 1}</span>
+                                                    <span className="text-xs text-textmuted italic">Track {idx + 1}</span>
                                                 )}
 
                                                 {/* Configured Key Transposer */}
-                                                <div className="flex items-center gap-1 text-xs">
-                                                    <span className="text-[10px] uppercase font-bold text-textmuted">Key</span>
+                                                <div className="flex items-center gap-1.5 text-xs">
+                                                    <span className="text-xs uppercase font-bold text-textmuted">Key</span>
                                                     {isOwner ? (
-                                                        <div className="flex items-center bg-secondary/80 rounded-xl px-1 py-0.5 border border-themed">
+                                                        <div className="flex items-center bg-secondary/80 rounded-xl p-0.5 border border-themed">
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -760,12 +910,12 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
                                                                     const nextIdx = (curIdx - 1 + 12) % 12;
                                                                     handleSetSongKey(song.id, keys[nextIdx]);
                                                                 }}
-                                                                className="w-6 h-6 rounded-lg text-xs font-bold text-textprimary flex items-center justify-center hover:bg-surface-hover active:scale-95"
+                                                                className="w-8 h-8 min-w-[32px] min-h-[32px] rounded-lg text-sm font-bold text-textprimary flex items-center justify-center hover:bg-surface-hover active:scale-95"
                                                                 title="Key Down"
                                                             >
                                                                 −
                                                             </button>
-                                                            <span className="px-1.5 font-mono text-xs font-bold text-accent min-w-[24px] text-center">
+                                                            <span className="px-2 font-mono text-xs font-bold text-accent min-w-[28px] text-center">
                                                                 {currentKey}
                                                             </span>
                                                             <button
@@ -776,14 +926,14 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
                                                                     const nextIdx = (curIdx + 1) % 12;
                                                                     handleSetSongKey(song.id, keys[nextIdx]);
                                                                 }}
-                                                                className="w-6 h-6 rounded-lg text-xs font-bold text-textprimary flex items-center justify-center hover:bg-surface-hover active:scale-95"
+                                                                className="w-8 h-8 min-w-[32px] min-h-[32px] rounded-lg text-sm font-bold text-textprimary flex items-center justify-center hover:bg-surface-hover active:scale-95"
                                                                 title="Key Up"
                                                             >
                                                                 +
                                                             </button>
                                                         </div>
                                                     ) : (
-                                                        <span className="font-mono text-accent font-bold px-1.5">{currentKey}</span>
+                                                        <span className="font-mono text-accent font-bold px-1.5 text-xs">{currentKey}</span>
                                                     )}
                                                 </div>
                                             </div>
@@ -832,7 +982,7 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
                         <div className="flex gap-3 pt-1">
                             <button
                                 onClick={() => setShowDeleteModal(false)}
-                                className="flex-1 h-11 rounded-xl bg-secondary text-textprimary text-sm font-semibold active:bg-surface-hover transition-colors border border-themed"
+                                className="flex-1 h-11 rounded-xl bg-secondary text-textprimary text-sm font-semibold hover:bg-surface-hover active:bg-surface-hover transition-colors border-0"
                             >
                                 Cancel
                             </button>
@@ -874,12 +1024,12 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
                                     type="text"
                                     value={pickerSearch}
                                     onChange={(e) => setPickerSearch(e.target.value)}
-                                    placeholder="Search song title or artist..."
+                                    placeholder="Search title, artist, or lyrics..."
                                     className="w-full bg-secondary border border-themed rounded-xl pl-9 pr-4 py-2.5 text-xs text-textprimary placeholder:text-textmuted focus:outline-none focus:border-accent"
                                 />
                             </div>
                         </div>
-                        <div className="p-3 divide-y divide-themed/20 overflow-y-auto flex-1 overscroll-contain">
+                        <div className="px-3 py-2 overflow-y-auto flex-1 overscroll-contain space-y-0.5">
                             {filteredPickerSongs.length === 0 ? (
                                 <p className="text-textmuted text-center py-6 text-xs italic">No matching songs found</p>
                             ) : (
@@ -890,20 +1040,22 @@ export function ModernSetlistCard({ setlist, isPast = false, onPrint }) {
                                             key={s.id}
                                             disabled={isAdded}
                                             onClick={() => handleAddSong(s.id)}
-                                            className={`w-full py-2.5 px-3 flex items-center justify-between text-left transition-colors rounded-xl ${
+                                            className={`w-full py-3 px-3.5 flex items-center justify-between text-left transition-colors rounded-xl border-0 shadow-none outline-none bg-transparent ${
                                                 isAdded
-                                                    ? 'opacity-40 cursor-not-allowed'
+                                                    ? 'opacity-35 cursor-not-allowed'
                                                     : 'hover:bg-surface-hover active:bg-surface-active'
                                             }`}
                                         >
-                                            <div className="min-w-0 pr-2">
-                                                <p className="font-medium text-textprimary text-sm truncate">{s.title}</p>
-                                                <p className="text-xs text-textmuted truncate">{s.artist} • <span className="text-accent">{s.category}</span></p>
+                                            <div className="min-w-0 pr-3">
+                                                <p className="font-semibold text-textprimary text-sm truncate leading-snug">{s.title}</p>
+                                                <p className="text-xs text-textmuted truncate mt-0.5">{s.artist} • <span className="text-accent">{s.category}</span></p>
                                             </div>
                                             {isAdded ? (
-                                                <span className="text-[10px] uppercase font-bold text-accent px-2 py-0.5">Added</span>
+                                                <span className="text-[10px] uppercase font-bold text-accent px-2 py-0.5 shrink-0">Added</span>
                                             ) : (
-                                                <Plus className="w-4 h-4 text-accent shrink-0" />
+                                                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-accent shrink-0">
+                                                    <Plus className="w-4 h-4 text-accent" />
+                                                </div>
                                             )}
                                         </button>
                                     );
@@ -922,7 +1074,19 @@ export function PrintSetlistModal({ setlist, onClose }) {
     const { songs: allSongs } = useSongCache();
     const songKeys = setlist.songKeys || {};
     const [setlistSongs, setSetlistSongs] = useState([]);
-    const [columns, setColumns] = useState(2); // 1 = 1 song/page (Single column), 2 = 2 songs/page (2-columns)
+    // Default to 1 song per page if setlist only has 1 song, else 2 songs per page
+    const [columns, setColumns] = useState(() => (setlist?.songIds?.length === 1 ? 1 : 2));
+    const [accidentalMode, setAccidentalMode] = useState(() => localStorage.getItem('selah_accidental_mode') || 'sharp');
+
+    useBackHandler(true, onClose);
+
+    const toggleAccidentalMode = () => {
+        const next = accidentalMode === 'sharp' ? 'flat' : 'sharp';
+        setAccidentalMode(next);
+        try {
+            localStorage.setItem('selah_accidental_mode', next);
+        } catch {}
+    };
 
     useEffect(() => {
         let isMounted = true;
@@ -942,17 +1106,27 @@ export function PrintSetlistModal({ setlist, onClose }) {
     }
 
     const handlePrintTrigger = () => {
-        if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
-            window.AndroidPrint.print();
-        } else {
-            window.print();
+        try {
+            const oldTitle = document.title;
+            document.title = `${setlist?.title || 'Setlist'} (Chord Chart)`;
+            if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
+                window.AndroidPrint.print();
+            } else {
+                window.print();
+            }
+            setTimeout(() => {
+                document.title = oldTitle;
+            }, 1000);
+        } catch (e) {
+            console.error('Print error:', e);
+            if (typeof window.print === 'function') window.print();
         }
     };
 
-    return (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 overflow-y-auto p-3 sm:p-6 flex flex-col items-center animate-fadeIn">
+    const modalContent = (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 overflow-y-auto p-3 sm:p-6 flex flex-col items-center animate-fadeIn print-modal-backdrop">
             {/* Solid Opaque High-Contrast Action Bar */}
-            <div className="sticky top-2 sm:top-4 z-50 w-full max-w-4xl bg-zinc-900 border border-zinc-700/80 px-4 sm:px-6 py-3 rounded-2xl shadow-2xl flex flex-wrap items-center justify-between gap-3 mb-6 print:hidden">
+            <div className="sticky top-2 sm:top-4 z-50 w-full max-w-4xl bg-zinc-900 border border-zinc-700/80 px-4 sm:px-6 py-3 rounded-2xl shadow-2xl flex flex-wrap items-center justify-between gap-3 mb-6 print:hidden print-hidden">
                 {/* Title & Metadata */}
                 <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-accent/20 border border-accent/40 flex items-center justify-center text-accent shrink-0">
@@ -961,13 +1135,28 @@ export function PrintSetlistModal({ setlist, onClose }) {
                     <div className="min-w-0">
                         <h3 className="font-bold text-white text-sm sm:text-base truncate">{setlist.title}</h3>
                         <p className="text-[11px] text-zinc-400 truncate">
-                            {setlistSongs.length} songs • {pages.length} {pages.length === 1 ? 'page' : 'pages'} A4
+                            {setlistSongs.length} {setlistSongs.length === 1 ? 'song' : 'songs'} • {pages.length} {pages.length === 1 ? 'page' : 'pages'} A4
                         </p>
                     </div>
                 </div>
 
                 {/* Print Layout Segmented Toggle & Actions */}
-                <div className="flex items-center gap-2.5 shrink-0 ml-auto">
+                <div className="flex items-center gap-2.5 shrink-0 ml-auto flex-wrap">
+                    {/* Flat / Sharp Accidental Toggle */}
+                    <button
+                        onClick={toggleAccidentalMode}
+                        className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1 active:scale-95 ${
+                            accidentalMode === 'sharp'
+                                ? 'bg-zinc-800 text-accent border-zinc-700 hover:border-accent/40 shadow-sm'
+                                : 'bg-zinc-800 text-amber-400 border-zinc-700 hover:border-amber-400/40 shadow-sm'
+                        }`}
+                        title={`Chord Notation: ${accidentalMode === 'sharp' ? 'Sharps (♯)' : 'Flats (♭)'}. Tap to toggle.`}
+                    >
+                        <span className={accidentalMode === 'flat' ? 'font-black text-amber-400 text-sm' : 'text-zinc-500'}>♭</span>
+                        <span className="text-zinc-600 font-mono text-[10px]">/</span>
+                        <span className={accidentalMode === 'sharp' ? 'font-black text-accent text-sm' : 'text-zinc-500'}>♯</span>
+                    </button>
+
                     {/* 1-Col vs 2-Col Layout Switch */}
                     <div className="flex items-center bg-zinc-800 p-1 rounded-xl border border-zinc-700">
                         <button
@@ -977,7 +1166,7 @@ export function PrintSetlistModal({ setlist, onClose }) {
                                     ? 'bg-accent text-zinc-950 shadow-md' 
                                     : 'text-zinc-400 hover:text-white'
                             }`}
-                            title="1 Song per Page (Large / Single Column)"
+                            title="1 Song per Page (Full Width / Single Column)"
                         >
                             <span>1 Song/Page</span>
                         </button>
@@ -1015,204 +1204,125 @@ export function PrintSetlistModal({ setlist, onClose }) {
                 </div>
             </div>
 
-            {/* Printable Document Container */}
-            <div className="printable-wrapper w-full max-w-4xl space-y-8 print:space-y-0">
+            {/* Print Pages Container */}
+            <div className="printable-wrapper w-full max-w-4xl print:max-w-none flex flex-col items-center gap-6">
                 {pages.map((pageSongs, pageIdx) => (
-                    <div
-                        key={pageIdx}
-                        className="a4-page bg-white text-black p-8 rounded-xl shadow-2xl w-full min-h-[1080px] text-left flex flex-col justify-between box-border overflow-hidden"
-                        style={{
-                            pageBreakAfter: pageIdx < pages.length - 1 ? 'always' : 'auto',
-                            breakAfter: pageIdx < pages.length - 1 ? 'page' : 'auto'
-                        }}
-                    >
-                        {/* Page Header */}
-                        <div className="border-b-2 border-black/20 pb-3 mb-4 flex justify-between items-center shrink-0">
-                            <div>
-                                <h1 className="text-xl font-bold font-serif text-black uppercase tracking-wide">
-                                    {setlist.title} {pages.length > 1 ? `(Page ${pageIdx + 1} of ${pages.length})` : ''}
-                                </h1>
-                                <p className="text-[10px] text-gray-600">
-                                    Selah Worship Planner • Date: {setlist.date || 'Undated'} • Prepared by: <strong>{setlist.preparedBy || 'Worship Leader'}</strong>
-                                </p>
-                            </div>
-                            <span className="text-[10px] font-bold uppercase bg-black text-white px-2.5 py-1 rounded">
-                                {columns === 1 
-                                    ? `Song ${pageIdx + 1} of ${setlistSongs.length}`
-                                    : `Songs ${pageIdx * 2 + 1}–${Math.min((pageIdx + 1) * 2, setlistSongs.length)} of ${setlistSongs.length}`
-                                }
-                            </span>
-                        </div>
-
-                        {setlist.notes && pageIdx === 0 && (
-                            <div className="mb-4 p-2.5 bg-gray-100 border-l-4 border-black rounded text-[11px] text-gray-800 italic shrink-0">
-                                <strong>Notes:</strong> {setlist.notes}
-                            </div>
-                        )}
-
-                        {/* Song Layout per Page (1-Column vs 2-Columns) */}
-                        <div className={`grid ${columns === 1 ? 'grid-cols-1' : 'grid-cols-2 gap-5'} items-start flex-1 min-h-0`}>
-                            {pageSongs.map((song, songInPageIdx) => {
-                                const globalIdx = columns === 1 ? pageIdx : pageIdx * 2 + songInPageIdx;
-                                const targetKey = songKeys[song.id] || song.originalKey || song.currentKey || 'C';
-                                const semitones = semitonesBetween(song.originalKey || 'C', targetKey);
-                                const transposedLyrics = transposeLyrics(song.lyrics || '', semitones);
-                                const sections = parseLyrics(transposedLyrics);
-
-                                return (
-                                    <div
-                                        key={song.id}
-                                        className="border border-gray-300 rounded-xl p-4 bg-gray-50/50 shadow-sm overflow-hidden box-border max-w-full h-full flex flex-col justify-between"
-                                    >
-                                        <div>
-                                            {/* Song Header */}
-                                            <div className="border-b-2 border-gray-300 pb-2 mb-3 flex items-start justify-between gap-2 shrink-0">
-                                                <div className="min-w-0 flex-1">
-                                                    <h3 className="font-bold text-base text-black leading-tight break-words">
-                                                        {globalIdx + 1}. {song.title}
-                                                    </h3>
-                                                    <p className="text-xs text-gray-600 font-medium truncate">{song.artist}</p>
-                                                </div>
-                                                <div className="text-right shrink-0">
-                                                    <span className="px-2.5 py-1 bg-black text-white rounded-lg font-bold text-xs inline-block shadow-sm">
-                                                        Key: {targetKey}
-                                                    </span>
-                                                    {targetKey !== song.originalKey && (
-                                                        <p className="text-[10px] text-gray-500 mt-0.5">Orig: {song.originalKey}</p>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Song Sections */}
-                                            <div className={`space-y-3 text-[12px] leading-snug ${columns === 1 ? 'columns-1 sm:columns-2 gap-6' : ''}`}>
-                                                {sections.map((sec, sIdx) => (
-                                                    <div key={sIdx} className="mb-3 break-inside-avoid">
-                                                        <div className="font-bold text-[11px] uppercase tracking-wider text-amber-900 border-b border-gray-200 pb-0.5 mb-1">
-                                                            {sec.label}
-                                                        </div>
-                                                        {sec.lines.map((line, lIdx) => {
-                                                            const cleanLyricLine = line.replace(/\[[^\]]+\]/g, '').trim();
-
-                                                            if (!isChordLine(line)) {
-                                                                return (
-                                                                    <p key={lIdx} className="text-gray-900 font-sans text-[12px] leading-snug my-0.5 whitespace-pre-wrap break-words max-w-full">
-                                                                        {line || '\u00A0'}
-                                                                    </p>
-                                                                );
-                                                            }
-
-                                                            const { chordLine, lyricLine } = separateChords(line);
-                                                            return (
-                                                                <div key={lIdx} className="my-1 overflow-hidden">
-                                                                    <pre className="font-mono text-amber-950 font-black text-[14px] leading-tight mb-0.5 whitespace-pre-wrap break-words max-w-full tracking-wide">
-                                                                        {chordLine}
-                                                                    </pre>
-                                                                    <p className="text-gray-900 font-sans text-[12px] leading-snug my-0 whitespace-pre-wrap break-words max-w-full">
-                                                                        {lyricLine || '\u00A0'}
-                                                                    </p>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
+                    <div key={pageIdx} className={`w-full flex justify-center ${pageIdx > 0 ? 'print-page-break' : ''}`}>
+                        <PrintFrame>
+                            <div
+                                className="print-sheet a4-page bg-white text-black rounded-2xl shadow-2xl p-6 sm:p-8 w-full max-w-[210mm] min-h-[297mm] flex flex-col justify-between border border-gray-200 box-border print:p-0 print:border-none print:shadow-none print:rounded-none"
+                            >
+                                {/* Page Running Header */}
+                                <div className="border-b-2 border-black pb-2 mb-4 flex items-center justify-between shrink-0">
+                                    <div>
+                                        <h1 className="text-xl font-black uppercase tracking-tight text-black">{setlist.title}</h1>
+                                        <p className="text-[10px] text-gray-600 font-medium">
+                                            {setlist.date ? `Date: ${setlist.date}` : ''}
+                                            {setlist.date && setlist.preparedBy ? ' • ' : ''}
+                                            {setlist.preparedBy ? <>Prepared by: <strong>{setlist.preparedBy}</strong></> : null}
+                                        </p>
                                     </div>
-                                );
-                            })}
-                        </div>
+                                    <span className="text-[10px] font-bold uppercase bg-black text-white px-2.5 py-1 rounded">
+                                        {columns === 1 
+                                            ? `Song ${pageIdx + 1} of ${setlistSongs.length}`
+                                            : `Songs ${pageIdx * 2 + 1}–${Math.min((pageIdx + 1) * 2, setlistSongs.length)} of ${setlistSongs.length}`
+                                        }
+                                    </span>
+                                </div>
+
+                                {setlist.notes && pageIdx === 0 && (
+                                    <div className="mb-4 p-2.5 bg-gray-100 border-l-4 border-black rounded text-[11px] text-gray-800 italic shrink-0">
+                                        <strong>Notes:</strong> {setlist.notes}
+                                    </div>
+                                )}
+
+                                {/* Song Layout per Page (1-Column vs 2-Columns) */}
+                                <div className={`grid ${columns === 1 ? 'grid-cols-1 w-full gap-6' : 'grid-cols-2 gap-5 w-full'} items-start flex-1 min-h-0`}>
+                                    {pageSongs.map((song, songInPageIdx) => {
+                                        const globalIdx = columns === 1 ? pageIdx : pageIdx * 2 + songInPageIdx;
+                                        const targetKey = songKeys[song.id] || song.originalKey || song.currentKey || 'C';
+                                        const semitones = semitonesBetween(song.originalKey || 'C', targetKey);
+                                        const transposedLyrics = transposeLyrics(song.lyrics || '', semitones, accidentalMode);
+                                        const sections = parseLyrics(transposedLyrics);
+                                        const formattedTargetKey = formatKey(targetKey, accidentalMode);
+                                        const formattedOrigKey = formatKey(song.originalKey || 'C', accidentalMode);
+
+                                        return (
+                                            <div
+                                                key={song.id}
+                                                className="song-print-card print-keep border border-gray-300 rounded-xl p-4 bg-gray-50/50 shadow-sm box-border max-w-full flex flex-col justify-between"
+                                            >
+                                                <div>
+                                                    {/* Song Header */}
+                                                    <div className="border-b-2 border-gray-300 pb-2 mb-3 flex items-start justify-between gap-2 shrink-0">
+                                                        <div className="min-w-0 flex-1">
+                                                            <h3 className="font-bold text-base text-black leading-tight break-words">
+                                                                {globalIdx + 1}. {song.title}
+                                                            </h3>
+                                                            {song.artist && (
+                                                                <p className="text-xs text-gray-600 font-medium truncate">{song.artist}</p>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-right shrink-0">
+                                                            <span className="px-2.5 py-1 bg-black text-white rounded-lg font-bold text-xs inline-block shadow-sm">
+                                                                Key: {formattedTargetKey}
+                                                            </span>
+                                                            {targetKey !== song.originalKey && (
+                                                                <p className="text-[10px] text-gray-500 mt-0.5">Orig: {formattedOrigKey}</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Song Sections */}
+                                                    <div className="space-y-3 text-[12px] leading-snug">
+                                                        {sections.map((sec, sIdx) => (
+                                                            <div key={sIdx} className="song-section print-keep mb-3">
+                                                                <div className="font-bold text-[11px] uppercase tracking-wider text-amber-900 border-b border-gray-200 pb-0.5 mb-1.5">
+                                                                    {sec.label}
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    {sec.lines.map((line, lIdx) => (
+                                                                        <ChordLineRenderer
+                                                                            key={lIdx}
+                                                                            line={line}
+                                                                            fontSize={12}
+                                                                            showChords={true}
+                                                                            chordColorClass="text-amber-950 font-black"
+                                                                            lyricColorClass="text-gray-900"
+                                                                            isPrint={true}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </PrintFrame>
                     </div>
                 ))}
             </div>
-
-            {/* Global Print CSS Styles for Multi-Sheet A4 Printing */}
-            <style dangerouslySetInnerHTML={{ __html: `
-                @media print {
-                    @page {
-                        size: A4 portrait;
-                        margin: 0;
-                    }
-                    html, body {
-                        background: #ffffff !important;
-                        color: #000000 !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        height: auto !important;
-                        overflow: visible !important;
-                    }
-                    /* Unset modal overflow and container restrictions during print */
-                    .fixed.inset-0 {
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
-                        width: 100% !important;
-                        height: auto !important;
-                        background: transparent !important;
-                        backdrop-filter: none !important;
-                        overflow: visible !important;
-                        padding: 0 !important;
-                        display: block !important;
-                    }
-                    button, header, nav {
-                        display: none !important;
-                    }
-                    .printable-wrapper {
-                        display: block !important;
-                        position: relative !important;
-                        width: 100% !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                    }
-                    .a4-page {
-                        display: flex !important;
-                        flex-direction: column !important;
-                        justify-content: space-between !important;
-                        width: 210mm !important;
-                        height: 297mm !important;
-                        padding: 12mm !important;
-                        margin: 0 !important;
-                        box-shadow: none !important;
-                        border: none !important;
-                        box-sizing: border-box !important;
-                        page-break-before: auto !important;
-                        page-break-after: always !important;
-                        break-after: page !important;
-                        page-break-inside: avoid !important;
-                        break-inside: avoid !important;
-                        overflow: hidden !important;
-                    }
-                    .a4-page:last-child {
-                        page-break-after: auto !important;
-                        break-after: auto !important;
-                    }
-                    .a4-page pre {
-                        font-size: 14px !important;
-                        font-weight: 900 !important;
-                        line-height: 1.25 !important;
-                        color: #451a03 !important;
-                        white-space: pre-wrap !important;
-                        word-break: break-word !important;
-                        overflow-wrap: anywhere !important;
-                        max-width: 100% !important;
-                    }
-                    .a4-page p {
-                        font-size: 12px !important;
-                        line-height: 1.3 !important;
-                        white-space: pre-wrap !important;
-                        word-break: break-word !important;
-                        overflow-wrap: anywhere !important;
-                        max-width: 100% !important;
-                    }
-                }
-            ` }} />
         </div>
     );
+
+    const printMount = typeof document !== 'undefined'
+        ? (document.getElementById('print-root') || document.body)
+        : null;
+
+    if (!printMount) return modalContent;
+    return createPortal(modalContent, printMount);
 }
 
 // ── Redesigned Material 3 Add Setlist Modal ──
 export function AddSetlistModal({ onClose }) {
     const { user } = useAuth();
     if (!user) return null;
+
+    useBackHandler(true, onClose);
 
     useEffect(() => {
         const prev = document.body.style.overflow;
@@ -1231,20 +1341,84 @@ export function AddSetlistModal({ onClose }) {
         e.preventDefault();
         haptic('light');
         const author = preparedBy.trim() || user?.user_metadata?.username || user?.email?.split('@')[0] || 'Worship Leader';
+        const now = new Date().toISOString();
+        const churchId = await getUserChurchId(user);
         const newSetlist = {
             id: crypto.randomUUID(),
             userId: user?.id || null,
+            churchId,
             title,
             date,
             preparedBy: author,
             notes,
             songIds: [],
             songKeys: {},
-            created: new Date().toISOString()
+            created: now,
+            updatedAt: now
         };
 
         await setlistDB.add(newSetlist);
-        await pushSetlistToSupabase(newSetlist, user);
+        if (user) {
+            await pushSetlistToSupabase(newSetlist, user);
+        }
+
+        // Deduplicate and link/create matching minister schedule entry
+        try {
+            const targetDate = date || now.split('T')[0];
+            const allSchedules = await scheduleDB.getAll();
+            const existingSched = allSchedules.find(s => 
+                s.setlistId === newSetlist.id || 
+                (s.serviceDate === targetDate && (!s.churchId || s.churchId.toLowerCase() === churchId.toLowerCase() || churchId === 'JFCM-Mercedes'))
+            );
+
+            if (existingSched) {
+                // Link and update existing schedule to prevent duplication
+                const updatedSchedule = {
+                    ...existingSched,
+                    setlistId: newSetlist.id,
+                    serviceTitle: existingSched.serviceTitle || title,
+                    updatedAt: now
+                };
+                await scheduleDB.put(updatedSchedule);
+                if (user) {
+                    await pushScheduleToSupabase(updatedSchedule, user);
+                }
+            } else {
+                const schedId = crypto.randomUUID();
+                const defaultAssignments = DEFAULT_WORSHIP_ROLES.map(role => ({
+                    id: crypto.randomUUID(),
+                    role_name: role.roleName,
+                    icon: role.icon,
+                    user_id: role.roleName.toLowerCase().includes('lead') ? (user?.id || null) : null,
+                    user_name: role.roleName.toLowerCase().includes('lead') ? author : '',
+                    user_avatar: role.roleName.toLowerCase().includes('lead') ? (user?.user_metadata?.avatar_seed || author) : '',
+                    user_email: role.roleName.toLowerCase().includes('lead') ? (user?.email || '') : '',
+                    status: 'assigned'
+                }));
+
+                const newSchedule = {
+                    id: schedId,
+                    churchId,
+                    serviceTitle: title,
+                    serviceDate: targetDate,
+                    serviceTime: '09:00 AM',
+                    setlistId: newSetlist.id,
+                    notes: notes || '',
+                    assignments: defaultAssignments,
+                    createdBy: user?.id || null,
+                    created: now,
+                    updatedAt: now
+                };
+
+                await scheduleDB.add(newSchedule);
+                if (user) {
+                    await pushScheduleToSupabase(newSchedule, user);
+                }
+            }
+        } catch (schedErr) {
+            console.warn('Auto schedule creation failed:', schedErr);
+        }
+
         haptic('success');
         onClose();
     };
@@ -1267,7 +1441,6 @@ export function AddSetlistModal({ onClose }) {
                         </div>
                         <div>
                             <h3 className="text-base font-bold text-textprimary">New Worship Setlist</h3>
-                            <p className="text-[11px] text-textmuted">Schedule and arrange lineup</p>
                         </div>
                     </div>
                     <button 
@@ -1315,7 +1488,7 @@ export function AddSetlistModal({ onClose }) {
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
                             rows="2"
-                            placeholder="Theme, scripture, keys or team notes..."
+                            placeholder="Notes (optional)"
                             className="w-full bg-secondary border border-themed rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary resize-none"
                         />
                     </div>
@@ -1323,7 +1496,7 @@ export function AddSetlistModal({ onClose }) {
                         <button 
                             type="button" 
                             onClick={onClose} 
-                            className="flex-1 py-3 text-xs font-bold border border-themed rounded-2xl hover:bg-surface-hover text-textmuted active:scale-95 transition"
+                            className="flex-1 py-3 text-xs font-bold bg-secondary hover:bg-surface-hover text-textmuted rounded-2xl border-0 active:scale-95 transition"
                         >
                             Cancel
                         </button>
@@ -1344,6 +1517,8 @@ export function AddSetlistModal({ onClose }) {
 function EditSetlistModal({ setlist, onClose }) {
     const { user } = useAuth();
 
+    useBackHandler(true, onClose);
+
     useEffect(() => {
         const prev = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
@@ -1358,6 +1533,7 @@ function EditSetlistModal({ setlist, onClose }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
         haptic('light');
+        const now = new Date().toISOString();
         const updated = {
             ...setlist,
             title,
@@ -1365,9 +1541,54 @@ function EditSetlistModal({ setlist, onClose }) {
             preparedBy,
             notes,
             userId: setlist.userId || user?.id || null,
+            updatedAt: now
         };
-        await setlistDB.update(setlist.id, { title, date, preparedBy, notes });
+        await setlistDB.update(setlist.id, { title, date, preparedBy, notes, updatedAt: now });
         await pushSetlistToSupabase(updated, user);
+
+        // Deduplicate and update linked schedule(s) for this lineup
+        try {
+            const allSchedules = await scheduleDB.getAll();
+            const matchingSchedules = allSchedules.filter(s => 
+                s.setlistId === setlist.id || 
+                (s.serviceDate === (setlist.date || date) && s.serviceTitle === (setlist.title || title))
+            );
+
+            if (matchingSchedules.length > 0) {
+                // If duplicates exist, pick the best schedule (most assigned ministers, then newest)
+                matchingSchedules.sort((a, b) => {
+                    const assignedA = (a.assignments || []).filter(x => x.user_id || x.user_name).length;
+                    const assignedB = (b.assignments || []).filter(x => x.user_id || x.user_name).length;
+                    if (assignedB !== assignedA) return assignedB - assignedA;
+                    return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+                });
+
+                const [primarySched, ...duplicateScheds] = matchingSchedules;
+
+                for (const dup of duplicateScheds) {
+                    await scheduleDB.delete(dup.id);
+                    if (user) {
+                        await deleteScheduleFromSupabase(dup.id, user).catch(() => {});
+                    }
+                }
+
+                const updatedPrimary = {
+                    ...primarySched,
+                    serviceTitle: title,
+                    serviceDate: date || primarySched.serviceDate,
+                    setlistId: setlist.id,
+                    notes: notes || primarySched.notes,
+                    updatedAt: now
+                };
+                await scheduleDB.put(updatedPrimary);
+                if (user) {
+                    await pushScheduleToSupabase(updatedPrimary, user);
+                }
+            }
+        } catch (schedSyncErr) {
+            console.warn('[Setlist] Failed to deduplicate/sync schedule on lineup update:', schedSyncErr);
+        }
+
         haptic('success');
         onClose();
     };
@@ -1440,7 +1661,7 @@ function EditSetlistModal({ setlist, onClose }) {
                         <button 
                             type="button" 
                             onClick={onClose} 
-                            className="flex-1 py-3 text-xs font-bold border border-themed rounded-2xl hover:bg-surface-hover text-textmuted active:scale-95 transition"
+                            className="flex-1 py-3 text-xs font-bold bg-secondary hover:bg-surface-hover text-textmuted rounded-2xl border-0 active:scale-95 transition"
                         >
                             Cancel
                         </button>

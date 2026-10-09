@@ -62,13 +62,23 @@ public class MainActivity extends BridgeActivity {
         public void print() {
             runOnUiThread(() -> {
                 WebView webView = bridge.getWebView();
-                if (webView != null) {
-                    PrintManager pm = (PrintManager) getSystemService(Context.PRINT_SERVICE);
-                    PrintDocumentAdapter adapter = webView.createPrintDocumentAdapter("Selah_Worship_Setlist");
-                    if (pm != null) {
-                        pm.print("Selah Worship Setlist", adapter, new PrintAttributes.Builder().build());
-                    }
-                }
+                if (webView == null) return;
+                PrintManager pm = (PrintManager) getSystemService(Context.PRINT_SERVICE);
+                if (pm == null) return;
+
+                String title = webView.getTitle();
+                String jobName = (title == null || title.trim().isEmpty()) ? "Selah Chord Chart" : title.trim();
+                PrintDocumentAdapter adapter = webView.createPrintDocumentAdapter(jobName);
+
+                // A4 by default (user may change paper size in the system dialog).
+                // WebView ignores CSS @page margins, so margins are drawn by the page's .print-frame.
+                PrintAttributes attrs = new PrintAttributes.Builder()
+                    .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                    .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                    .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
+                    .build();
+
+                pm.print(jobName, adapter, attrs);
             });
         }
     }

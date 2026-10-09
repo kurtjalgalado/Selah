@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { CheckCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle, WarningCircle as AlertCircle } from '@phosphor-icons/react';
 
 export default function Toast({ message, type = 'success', onClose }) {
     useEffect(() => {

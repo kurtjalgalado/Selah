@@ -1,25 +1,33 @@
-import { useState, useMemo, useEffect, useContext } from 'react';
+import { useState, useMemo, useEffect, useContext, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { songDB, setlistDB } from '../db/dexie';
 import { useSongCache } from '../context/SongCacheContext';
-import { Search, Plus, Music, Clock, ChevronRight, Trash2, ListPlus, LogOut, Calendar, X, SlidersHorizontal, RotateCcw, LayoutGrid, Layers, Mic, Type, Zap, List } from 'lucide-react';
+import { MagnifyingGlass as Search, Plus, MusicNotes as Music, Clock, CaretRight as ChevronRight, Trash as Trash2, ListPlus, SignOut as LogOut, CalendarBlank as Calendar, X, SlidersHorizontal, ArrowCounterClockwise as RotateCcw, SquaresFour as LayoutGrid, Stack as Layers, MicrophoneStage as Mic, TextT as Type, Lightning as Zap, List, Lock, Shield, User } from '@phosphor-icons/react';
 import { useAuth } from '../auth/AuthContext';
 import { pushSongToSupabase, pushSetlistToSupabase, discreetBackgroundSync } from '../supabase/sync';
 import PullToRefresh from '../components/PullToRefresh';
 import AppLogo from '../components/AppLogo';
+import TopBarNotificationBell from '../components/TopBarNotificationBell';
 import EditSongModal from '../components/EditSongModal';
 import AlphabeticalScrollBar from '../components/AlphabeticalScrollBar';
-import { ModernSetlistCard, AddSetlistModal, PrintSetlistModal } from './SetlistScreen';
+import QuickAddToSetlistModal from '../components/QuickAddToSetlistModal';
+export { default as QuickAddToSetlistModal } from '../components/QuickAddToSetlistModal';
+import AddSongModal from '../components/AddSongModal';
+export { default as AddSongModal } from '../components/AddSongModal';
+import { ModernSetlistCard, AddSetlistModal, PrintSetlistModal, SetlistDateBadge } from './SetlistScreen';
 import { LibrarySkeletonCards } from '../components/SkeletonLoader';
-import { KEYS, getKeyIndex } from '../utils/chords';
+import { KEYS, getKeyIndex, stripChords } from '../utils/chords';
 import { haptic } from '../utils/haptics';
 
 const ALPHABET = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','#'];
 
 export default function LibraryScreen() {
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, profile, canManageSetlists } = useAuth();
+
+    const headerRef = useRef(null);
+    const [headerHeight, setHeaderHeight] = useState(154);
 
     const [search, setSearch] = useState('');
 
@@ -37,6 +45,23 @@ export default function LibraryScreen() {
     const [quickAddSong, setQuickAddSong] = useState(null);
     const [editingSong, setEditingSong] = useState(null);
 
+    // Measure header height dynamically for pixel-perfect sticky positioning across all devices and filter states
+    useEffect(() => {
+        if (!headerRef.current) return;
+        const updateHeight = () => {
+            const h = headerRef.current?.offsetHeight;
+            if (h && h > 0) setHeaderHeight(h);
+        };
+        updateHeight();
+        const observer = new ResizeObserver(updateHeight);
+        observer.observe(headerRef.current);
+        window.addEventListener('resize', updateHeight);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', updateHeight);
+        };
+    }, [showFilters]);
+
     // Lock body scroll when modals are open
     useEffect(() => {
         if (showAddSongModal || showAddSetlistModal || quickAddSong || editingSong) {
@@ -52,19 +77,21 @@ export default function LibraryScreen() {
     // Load from SongCache
     const { songs, setlists, loading } = useSongCache();
 
-    // Upcoming setlists
+    // Upcoming setlists (Tenancy-isolated)
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const userChurchId = profile?.church_id || user?.user_metadata?.church_id || 'JFCM-Mercedes';
 
     const upcomingSetlists = useMemo(() => {
+        if (!user) return [];
         return (setlists || [])
-            .filter(s => !s.date || s.date >= todayStr)
+            .filter(s => (!s.churchId || s.churchId.toLowerCase() === userChurchId.toLowerCase() || userChurchId === 'JFCM-Mercedes') && (!s.date || s.date >= todayStr))
             .sort((a, b) => {
                 if (!a.date) return 1;
                 if (!b.date) return -1;
                 return a.date.localeCompare(b.date);
             });
-    }, [setlists, todayStr]);
+    }, [setlists, todayStr, user, userChurchId]);
 
     // Filtered & Sorted songs
     const filteredSongs = useMemo(() => {
@@ -83,7 +110,7 @@ export default function LibraryScreen() {
         const q = (search || '').toLowerCase().trim();
 
         const result = uniqueSongs.filter(song => {
-            if (!song) return false;
+            if (!song || !song.title || !song.title.trim()) return false;
             const songTitle = (song.title || '').toLowerCase();
             const songArtist = (song.artist || '').toLowerCase();
             const songCategory = (song.category || '').toLowerCase();
@@ -95,6 +122,9 @@ export default function LibraryScreen() {
             const isFast = songCategory.includes('fast') || songTags.some(t => t.includes('fast')) || (song.tempo && song.tempo >= 100);
             const isSlow = songCategory.includes('slow') || songTags.some(t => t.includes('slow')) || (song.tempo && song.tempo < 100);
 
+            const songLyrics = (song.lyrics || '').toLowerCase();
+            const cleanLyrics = song.lyrics ? stripChords(song.lyrics).toLowerCase() : '';
+
             let matchesLanguage = true;
             if (languageFilter === 'Tagalog') matchesLanguage = isTagalog;
             else if (languageFilter === 'English') matchesLanguage = isEnglish;
@@ -103,7 +133,11 @@ export default function LibraryScreen() {
             if (tempoFilter === 'Fast') matchesTempo = isFast;
             else if (tempoFilter === 'Slow') matchesTempo = isSlow;
 
-            const matchesSearch = !q || songTitle.includes(q) || songArtist.includes(q);
+            const matchesSearch = !q || 
+                songTitle.includes(q) || 
+                songArtist.includes(q) || 
+                songLyrics.includes(q) || 
+                cleanLyrics.includes(q);
             return matchesLanguage && matchesTempo && matchesSearch;
         });
 
@@ -205,7 +239,7 @@ export default function LibraryScreen() {
             }
         }
         if (el) {
-            const yOffset = -140;
+            const yOffset = -(headerHeight + 8);
             const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
             window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
         }
@@ -222,14 +256,19 @@ export default function LibraryScreen() {
         <PullToRefresh onRefresh={discreetBackgroundSync}>
             <div className="min-h-screen bg-primary pb-28 animate-pageEnter">
                 {/* ===== HEADER ===== */}
-                <header className="glass sticky top-0 z-30 border-b border-themed">
+                <header ref={headerRef} className="glass sticky top-0 z-30 border-b border-themed">
                     <div className="px-5 pt-10 pb-4 space-y-3">
                         <div className="flex items-center justify-between">
                             <AppLogo size="md" showText={true} />
-                            <div className="flex items-center gap-1 text-xs text-textmuted bg-secondary border border-themed px-3 py-1.5 rounded-2xl">
-                                <Music className="w-3.5 h-3.5 text-accent" />
-                                <span className="font-bold text-textprimary">{filteredSongs.length}</span>
-                                <span>{filteredSongs.length === 1 ? 'Song' : 'Songs'}</span>
+                            
+                            <div className="flex items-center gap-2">
+                                <TopBarNotificationBell />
+                                
+                                <div className="flex items-center gap-1 text-xs text-textmuted bg-secondary border border-themed px-3 py-1.5 rounded-2xl">
+                                    <Music className="w-3.5 h-3.5 text-accent" />
+                                    <span className="font-bold text-textprimary">{filteredSongs.length}</span>
+                                    <span>{filteredSongs.length === 1 ? 'Song' : 'Songs'}</span>
+                                </div>
                             </div>
                         </div>
 
@@ -241,7 +280,7 @@ export default function LibraryScreen() {
                                     type="text"
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
-                                    placeholder="Search song title, artist, or chords..."
+                                    placeholder="Search title, artist, or lyrics..."
                                     className="w-full bg-secondary border border-themed rounded-2xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-accent transition-colors text-textprimary min-h-[44px]"
                                 />
                                 {search && (
@@ -260,10 +299,10 @@ export default function LibraryScreen() {
                                     haptic('light');
                                     setShowFilters(f => !f);
                                 }}
-                                className={`px-3.5 rounded-2xl border flex items-center gap-1.5 text-xs font-bold transition-all shrink-0 min-h-[44px] relative active:scale-95 ${
+                                className={`px-3.5 rounded-2xl border-0 flex items-center gap-1.5 text-xs font-bold transition-all shrink-0 min-h-[44px] relative active:scale-95 ${
                                     showFilters || isFilterActive
-                                        ? 'bg-accent/20 border-accent text-accent shadow-sm'
-                                        : 'bg-secondary border-themed text-textmuted hover:text-textprimary'
+                                        ? 'bg-accent text-onaccent shadow-sm'
+                                        : 'bg-secondary hover:bg-surface-hover text-textmuted hover:text-textprimary'
                                 }`}
                                 title="Filter Songs"
                             >
@@ -311,10 +350,10 @@ export default function LibraryScreen() {
                                                         haptic('light');
                                                         setGroupBy(group.id);
                                                     }}
-                                                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border whitespace-nowrap transition-all flex items-center gap-1.5 active:scale-95 ${
+                                                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-0 whitespace-nowrap transition-all flex items-center gap-1.5 active:scale-95 ${
                                                         isActive
-                                                            ? 'bg-accent text-onaccent border-accent font-bold shadow-sm shadow-accent/20'
-                                                            : 'border-themed text-textmuted hover:border-accent hover:text-textprimary bg-secondary'
+                                                            ? 'bg-accent text-onaccent font-bold shadow-sm shadow-accent/20'
+                                                            : 'text-textmuted hover:text-textprimary bg-secondary hover:bg-surface-hover'
                                                     }`}
                                                 >
                                                     <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-onaccent' : 'text-accent'}`} />
@@ -336,10 +375,10 @@ export default function LibraryScreen() {
                                                     haptic('light');
                                                     setLanguageFilter(lang);
                                                 }}
-                                                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border whitespace-nowrap transition-all ${
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-0 whitespace-nowrap transition-all ${
                                                     languageFilter === lang
-                                                        ? 'bg-accent text-onaccent border-accent font-bold shadow-sm shadow-accent/20'
-                                                        : 'border-themed text-textmuted hover:border-accent hover:text-textprimary bg-secondary'
+                                                        ? 'bg-accent text-onaccent font-bold shadow-sm shadow-accent/20'
+                                                        : 'text-textmuted hover:text-textprimary bg-secondary hover:bg-surface-hover'
                                                 }`}
                                             >
                                                 {lang}
@@ -359,10 +398,10 @@ export default function LibraryScreen() {
                                                     haptic('light');
                                                     setTempoFilter(tempo);
                                                 }}
-                                                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border whitespace-nowrap transition-all ${
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-0 whitespace-nowrap transition-all ${
                                                     tempoFilter === tempo
-                                                        ? 'bg-accent text-onaccent border-accent font-bold shadow-sm shadow-accent/20'
-                                                        : 'border-themed text-textmuted hover:border-accent hover:text-textprimary bg-secondary'
+                                                        ? 'bg-accent text-onaccent font-bold shadow-sm shadow-accent/20'
+                                                        : 'text-textmuted hover:text-textprimary bg-secondary hover:bg-surface-hover'
                                                 }`}
                                             >
                                                 {tempo}
@@ -375,9 +414,9 @@ export default function LibraryScreen() {
                     </div>
                 </header>
 
-                {/* ===== SPOTIFY-STYLE MINIMALIST SONG LIST ===== */}
-                <div className="relative">
-                    <div className="px-4 py-3 pr-9 sm:pr-10 space-y-6">
+                {/* ===== SONG LIST ===== */}
+                <div className="relative max-w-5xl mx-auto">
+                    <div className="px-5 sm:px-8 py-5 pr-9 sm:pr-12 space-y-6">
                         {songs === undefined ? (
                             <LibrarySkeletonCards />
                         ) : filteredSongs.length === 0 ? (
@@ -392,10 +431,14 @@ export default function LibraryScreen() {
                                 <div 
                                     key={section.id} 
                                     id={`letter-${section.letter || section.id}`} 
-                                    className="space-y-1 scroll-mt-28"
+                                    className="space-y-1"
+                                    style={{ scrollMarginTop: `${headerHeight + 10}px` }}
                                 >
                                     {section.title && (
-                                        <div className="flex items-center justify-between sticky top-[138px] z-10 bg-primary/95 backdrop-blur-md py-1.5 px-2 border-b border-themed">
+                                        <div 
+                                            className="flex items-center justify-between sticky z-10 bg-primary/95 backdrop-blur-md py-2.5 px-3 border-b border-themed transition-[top] duration-150"
+                                            style={{ top: `${headerHeight}px` }}
+                                        >
                                             <span className="text-xs font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
                                                 {section.iconType === 'fast' && <Zap className="w-3.5 h-3.5 text-amber-400" />}
                                                 {section.iconType === 'slow' && <Clock className="w-3.5 h-3.5 text-blue-400" />}
@@ -438,7 +481,7 @@ export default function LibraryScreen() {
                         <AlphabeticalScrollBar
                             validLetters={activeLetters}
                             onLetterChange={scrollToLetter}
-                            topOffset={showFilters ? 260 : 150}
+                            topOffset={headerHeight + 8}
                         />
                     )}
                 </div>
@@ -539,256 +582,4 @@ function SpotifySongItem({ song, index, onClick, onQuickAdd }) {
     );
 }
 
-// ── Redesigned Material 3 Expressive Add Song Modal ──
-export function AddSongModal({ onClose }) {
-    const { user } = useAuth();
-    const [form, setForm] = useState({
-        title: '',
-        artist: '',
-        originalKey: 'C',
-        currentKey: 'C',
-        tempo: 80,
-        category: 'Fast',
-        lyrics: '',
-    });
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        haptic('light');
-        try {
-            const newSong = {
-                id: crypto.randomUUID(),
-                ...form,
-                tempo: parseInt(form.tempo) || 80,
-                dateAdded: new Date().toISOString(),
-            };
-            await songDB.add(newSong);
-            await pushSongToSupabase(newSong, user);
-            haptic('success');
-            onClose();
-        } catch (err) {
-            console.error('Failed to add song:', err);
-        }
-    };
-
-    return (
-        <div 
-            className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
-            onClick={onClose}
-        >
-            <div 
-                className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-xl shadow-2xl animate-slideUp max-h-[88vh] sm:max-h-[90vh] flex flex-col pb-[max(1.2rem,env(safe-area-inset-bottom))] sm:pb-0 overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-            >
-                {/* Grab Handle Pill */}
-                <div className="w-12 h-1.5 bg-textmuted/30 rounded-full mx-auto my-3 sm:hidden shrink-0" />
-                
-                {/* Modal Header */}
-                <div className="flex justify-between items-center px-6 py-3 border-b border-themed shrink-0 bg-secondary/40">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center">
-                            <Music className="w-4 h-4" />
-                        </div>
-                        <div>
-                            <h3 className="text-base font-bold text-textprimary">Add New Song</h3>
-                            <p className="text-[11px] text-textmuted">Enter chords, lyrics & key details</p>
-                        </div>
-                    </div>
-                    <button 
-                        onClick={onClose} 
-                        className="p-1.5 rounded-xl text-textmuted hover:text-textprimary hover:bg-surface-hover transition"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-
-                {/* Form Fields */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1 overscroll-contain">
-                    <div>
-                        <label className="block text-xs font-bold text-textmuted uppercase tracking-wider mb-1.5">Song Title</label>
-                        <input
-                            type="text"
-                            value={form.title}
-                            onChange={(e) => setForm({ ...form, title: e.target.value })}
-                            placeholder="e.g. King of Kings, Goodness of God"
-                            className="w-full bg-secondary border border-themed rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary"
-                            required
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-textmuted uppercase tracking-wider mb-1.5">Artist / Composer</label>
-                        <input
-                            type="text"
-                            value={form.artist}
-                            onChange={(e) => setForm({ ...form, artist: e.target.value })}
-                            placeholder="e.g. Hillsong Worship, Bethel Music"
-                            className="w-full bg-secondary border border-themed rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary"
-                            required
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3">
-                        <div>
-                            <label className="block text-xs font-bold text-textmuted uppercase tracking-wider mb-1.5">Key</label>
-                            <select
-                                value={form.originalKey}
-                                onChange={(e) => setForm({ ...form, originalKey: e.target.value, currentKey: e.target.value })}
-                                className="w-full bg-secondary border border-themed rounded-2xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary font-mono"
-                            >
-                                {KEYS.map(k => <option key={k} value={k}>{k}</option>)}
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-bold text-textmuted uppercase tracking-wider mb-1.5">Tempo (BPM)</label>
-                            <input
-                                type="number"
-                                value={form.tempo}
-                                onChange={(e) => setForm({ ...form, tempo: e.target.value })}
-                                className="w-full bg-secondary border border-themed rounded-2xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary"
-                                required
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-bold text-textmuted uppercase tracking-wider mb-1.5">Category</label>
-                            <select
-                                value={form.category}
-                                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                                className="w-full bg-secondary border border-themed rounded-2xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary"
-                            >
-                                <option value="Fast">Fast</option>
-                                <option value="Slow">Slow</option>
-                                <option value="English">English</option>
-                                <option value="Tagalog">Tagalog</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-textmuted uppercase tracking-wider mb-1.5">Lyrics & Chords</label>
-                        <textarea
-                            value={form.lyrics}
-                            onChange={(e) => setForm({ ...form, lyrics: e.target.value })}
-                            rows="6"
-                            placeholder="[Verse 1]&#10;[G]In the darkness we were [C]waiting..."
-                            className="w-full bg-secondary border border-themed rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent resize-none font-mono text-textprimary leading-relaxed"
-                        />
-                    </div>
-
-                    <div className="flex gap-3 pt-2 shrink-0">
-                        <button 
-                            type="button" 
-                            onClick={onClose} 
-                            className="flex-1 py-3 text-xs font-bold border border-themed rounded-2xl hover:bg-surface-hover text-textmuted active:scale-95 transition"
-                        >
-                            Cancel
-                        </button>
-                        <button 
-                            type="submit" 
-                            className="flex-1 py-3 text-xs font-bold bg-accent text-onaccent rounded-2xl hover:bg-accent/90 shadow-lg shadow-accent/20 active:scale-95 transition"
-                        >
-                            Save Song
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-
-// ── Redesigned Material 3 Quick Add to Setlist Modal ──
-export function QuickAddToSetlistModal({ song, upcomingSetlists, user, onClose, onCreateSetlist }) {
-    const [selectedKey, setSelectedKey] = useState(song.originalKey || song.currentKey || 'C');
-
-    const transposeKey = (dir) => {
-        haptic('light');
-        const idx = getKeyIndex(selectedKey);
-        let next = (idx + dir) % 12;
-        if (next < 0) next += 12;
-        setSelectedKey(KEYS[next]);
-    };
-
-    const handleAdd = async (setlist) => {
-        haptic('light');
-        const songIds = setlist.songIds || [];
-        if (!songIds.includes(song.id)) {
-            const updatedIds = [...songIds, song.id];
-            const updatedKeys = { ...(setlist.songKeys || {}), [song.id]: selectedKey };
-            await setlistDB.update(setlist.id, { songIds: updatedIds, songKeys: updatedKeys });
-            await pushSetlistToSupabase({ ...setlist, songIds: updatedIds, songKeys: updatedKeys }, user);
-        }
-        onClose();
-    };
-
-    return (
-        <div 
-            className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
-            onClick={onClose}
-        >
-            <div 
-                className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-xl shadow-2xl animate-slideUp max-h-[88vh] sm:max-h-[90vh] flex flex-col pb-[max(1.2rem,env(safe-area-inset-bottom))] sm:pb-0 overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="w-12 h-1.5 bg-textmuted/30 rounded-full mx-auto my-3 sm:hidden shrink-0" />
-                
-                <div className="flex justify-between items-center px-6 py-3 border-b border-themed shrink-0 bg-secondary/40">
-                    <div className="min-w-0">
-                        <h3 className="text-sm font-bold text-textprimary">Add to Worship Lineup</h3>
-                        <p className="text-xs text-accent font-semibold truncate">{song.title}</p>
-                    </div>
-                    <button onClick={onClose} className="p-1 text-textmuted hover:text-textprimary rounded-xl">
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-
-                {/* Key Selector */}
-                <div className="px-6 py-3 border-b border-themed flex items-center justify-between shrink-0 bg-secondary/20">
-                    <span className="text-xs font-bold text-textmuted uppercase tracking-wider">Arrange Key</span>
-                    <div className="flex items-center gap-1.5 bg-secondary rounded-2xl px-2 py-1 border border-themed">
-                        <button
-                            onClick={() => transposeKey(-1)}
-                            className="w-7 h-7 rounded-xl bg-surface-hover active:bg-accent/20 text-sm font-bold text-textprimary flex items-center justify-center"
-                        >−</button>
-                        <span className="px-2.5 h-7 flex items-center justify-center text-xs font-bold font-mono text-accent min-w-[28px]">
-                            {selectedKey}
-                        </span>
-                        <button
-                            onClick={() => transposeKey(1)}
-                            className="w-7 h-7 rounded-xl bg-surface-hover active:bg-accent/20 text-sm font-bold text-textprimary flex items-center justify-center"
-                        >+</button>
-                    </div>
-                </div>
-
-                <div className="p-4 space-y-2 overflow-y-auto flex-1 overscroll-contain">
-                    {(!upcomingSetlists || upcomingSetlists.length === 0) ? (
-                        <div className="text-center py-6 space-y-3">
-                            <p className="text-textmuted text-xs">No upcoming setlists available</p>
-                            <button
-                                onClick={onCreateSetlist}
-                                className="px-4 py-2.5 bg-accent text-onaccent rounded-2xl text-xs font-bold active:scale-95 transition"
-                            >
-                                Create New Setlist
-                            </button>
-                        </div>
-                    ) : (
-                        upcomingSetlists.map(setlist => (
-                            <button
-                                key={setlist.id}
-                                onClick={() => handleAdd(setlist)}
-                                className="w-full p-3.5 rounded-2xl bg-secondary border border-themed flex items-center justify-between text-left hover:border-accent active:scale-98 transition-all"
-                            >
-                                <div>
-                                    <p className="font-semibold text-textprimary text-sm leading-tight">{setlist.title}</p>
-                                    <p className="text-[11px] text-textmuted mt-0.5">{setlist.date || 'Undated'} • {setlist.songIds?.length || 0} songs</p>
-                                </div>
-                                <Plus className="w-4 h-4 text-accent shrink-0" />
-                            </button>
-                        ))
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-}

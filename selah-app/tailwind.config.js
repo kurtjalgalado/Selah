@@ -4,6 +4,9 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
+      borderColor: {
+        DEFAULT: 'var(--border)',
+      },
       colors: {
         primary: 'var(--bg-primary)',
         secondary: 'var(--bg-secondary)',
@@ -28,6 +31,7 @@ export default {
       fontFamily: {
         serif: ['Cormorant Garamond', 'serif'],
         sans: ['Inter', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Courier New', 'monospace'],
       },
     },
   },

@@ -3,7 +3,7 @@ import { KEYS } from '../utils/chords';
 import { songDB } from '../db/dexie';
 import { pushSongToSupabase } from '../supabase/sync';
 import { useAuth } from '../auth/AuthContext';
-import { X, Save } from 'lucide-react';
+import { X, FloppyDisk as Save } from '@phosphor-icons/react';
 
 const CATEGORY_OPTIONS = ['Fast', 'Slow', 'English', 'Tagalog'];
 
@@ -70,7 +70,7 @@ export default function EditSongModal({ song, onClose, onSaveSuccess }) {
                 {/* Modal Header */}
                 <div className="flex justify-between items-center px-6 py-3.5 border-b border-themed shrink-0">
                     <div>
-                        <h3 className="text-lg font-bold font-serif text-accent">Edit Song & Chords</h3>
+                        <h3 className="text-lg font-bold text-accent">Edit Song & Chords</h3>
                         <p className="text-xs text-textmuted truncate">{song?.title}</p>
                     </div>
                     <button onClick={onClose} className="p-1 rounded-lg text-textmuted hover:text-textprimary hover:bg-surface-hover transition">
@@ -158,7 +158,7 @@ export default function EditSongModal({ song, onClose, onSaveSuccess }) {
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 py-3 text-sm font-medium border border-themed rounded-xl hover:bg-surface-hover active:bg-surface-active transition text-textmuted"
+                            className="flex-1 py-3 text-sm font-semibold bg-secondary hover:bg-surface-hover active:bg-surface-active transition text-textmuted rounded-xl border-0"
                         >
                             Cancel
                         </button>

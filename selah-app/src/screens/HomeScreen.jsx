@@ -3,20 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useSongCache } from '../context/SongCacheContext';
 import { 
-    Calendar, Music, Plus, Play, Sparkles, ChevronRight, 
-    Zap, Clock, ListPlus, Flame, Heart, Layers, ArrowUpRight
-} from 'lucide-react';
+    CalendarBlank as Calendar, MusicNotes as Music, Plus, Play, CaretRight as ChevronRight, 
+    Lightning as Zap, Clock, ListPlus, Flame, Heart, Stack as Layers, ArrowUpRight, Users, Lock, SignIn as LogIn
+} from '@phosphor-icons/react';
 import PullToRefresh from '../components/PullToRefresh';
 import { discreetBackgroundSync } from '../supabase/sync';
 import AppLogo from '../components/AppLogo';
-import { AddSetlistModal } from './SetlistScreen';
+import { AddSetlistModal, SetlistDateBadge } from './SetlistScreen';
 import { AddSongModal, QuickAddToSetlistModal } from './LibraryScreen';
 import { haptic } from '../utils/haptics';
+import UserAvatar from '../components/UserAvatar';
+import TopBarNotificationBell from '../components/TopBarNotificationBell';
 
 export default function HomeScreen() {
     const navigate = useNavigate();
-    const { user } = useAuth();
-    const { songs, setlists } = useSongCache();
+    const { user, profile } = useAuth();
+    const { songs, setlists, schedules } = useSongCache();
 
     const [showAddSetlist, setShowAddSetlist] = useState(false);
     const [showAddSong, setShowAddSong] = useState(false);
@@ -40,26 +42,39 @@ export default function HomeScreen() {
     }, []);
 
     // User display name
-    const displayName = user?.user_metadata?.username || 
-                        user?.user_metadata?.full_name || 
+    const displayName = user?.user_metadata?.full_name || 
+                        profile?.full_name ||
+                        user?.user_metadata?.display_name ||
+                        profile?.username ||
+                        user?.user_metadata?.username || 
                         user?.email?.split('@')[0] || 
                         'Worship Leader';
 
-    // Dates & Setlists filtering
+    // Dates & Setlists filtering (Only upcoming within the next 7 days / this week)
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    
+    // 7 days ahead for "within the week" filter
+    const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const weekAheadStr = `${weekAhead.getFullYear()}-${String(weekAhead.getMonth() + 1).padStart(2, '0')}-${String(weekAhead.getDate()).padStart(2, '0')}`;
+    const userChurchId = profile?.church_id || user?.user_metadata?.church_id || 'JFCM-Mercedes';
 
     const upcomingSetlists = useMemo(() => {
+        if (!user) return [];
         return (setlists || [])
-            .filter(s => !s.date || s.date >= todayStr)
-            .sort((a, b) => {
-                if (!a.date) return 1;
-                if (!b.date) return -1;
-                return a.date.localeCompare(b.date);
-            });
-    }, [setlists, todayStr]);
+            .filter(s => (!s.churchId || s.churchId.toLowerCase() === userChurchId.toLowerCase() || userChurchId === 'JFCM-Mercedes') && (s.date && s.date >= todayStr && s.date <= weekAheadStr))
+            .sort((a, b) => a.date.localeCompare(b.date));
+    }, [setlists, todayStr, weekAheadStr, user, userChurchId]);
 
     const nextSetlist = upcomingSetlists[0] || null;
+    const isToday = nextSetlist?.date === todayStr;
+
+    // Upcoming Schedule for this week
+    const upcomingSchedule = useMemo(() => {
+        return (schedules || [])
+            .filter(s => s.serviceDate && s.serviceDate >= todayStr)
+            .sort((a, b) => a.serviceDate.localeCompare(b.serviceDate))[0] || null;
+    }, [schedules, todayStr]);
 
     // Featured Daily Songs (Deterministic daily pseudo-random refresh)
     const featuredSongs = useMemo(() => {
@@ -114,55 +129,71 @@ export default function HomeScreen() {
                         <div className="flex items-center justify-between">
                             <AppLogo size="md" showText={true} />
                             
-                            {/* Profile quick access avatar button */}
-                            <button
-                                onClick={() => {
-                                    haptic('light');
-                                    navigate('/profile');
-                                }}
-                                className="w-10 h-10 rounded-full bg-secondary border border-themed hover:border-accent flex items-center justify-center text-accent active:scale-95 transition-all shadow-sm"
-                                title="Go to Profile"
-                            >
-                                <span className="text-xs font-bold uppercase">
-                                    {displayName.charAt(0)}
-                                </span>
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {/* Top Bar Notification Bell */}
+                                <TopBarNotificationBell />
+
+                                {/* Profile quick access avatar button */}
+                                <button
+                                    onClick={() => {
+                                        haptic('light');
+                                        navigate('/profile');
+                                    }}
+                                    className="w-10 h-10 rounded-full bg-secondary border border-themed hover:border-emerald-500/50 flex items-center justify-center text-accent active:scale-95 transition-all shadow-sm overflow-hidden p-0.5"
+                                    title="Go to Profile"
+                                >
+                                    <UserAvatar
+                                        seed={profile?.avatar_seed || user?.user_metadata?.avatar_seed || displayName}
+                                        size="sm"
+                                        animated={true}
+                                        fallbackInitial={displayName.charAt(0)}
+                                        className="w-full h-full"
+                                    />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </header>
 
-                <main className="px-5 py-5 space-y-6 max-w-2xl mx-auto">
+                <main className="px-5 sm:px-8 py-5 space-y-6 max-w-5xl mx-auto">
                     {/* ===== USER GREETING BANNER ===== */}
                     <div className="space-y-1">
-                        <p className="text-[11px] font-bold text-accent tracking-widest uppercase flex items-center gap-1.5">
-                            <Sparkles className="w-3.5 h-3.5" />
+                        <p className="text-[11px] font-semibold text-accent tracking-widest uppercase flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-accent" />
                             {dateFormatted}
                         </p>
-                        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-textprimary tracking-tight">
+                        <h1 className="text-2xl sm:text-3xl font-bold text-textprimary tracking-tight">
                             {greeting}, <span className="text-accent">{displayName}</span>
                         </h1>
-                        <p className="text-xs text-textmuted">
-                            Welcome to Selah. Plan services, rehearse songs, and worship with joy.
-                        </p>
                     </div>
 
-                    {/* ===== QUICK ACTION CHIPS ===== */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    {/* ===== QUICK ACTIONS ===== */}
+                    <div className="grid grid-cols-3 gap-2.5">
                         <button
                             onClick={() => {
                                 haptic('light');
                                 if (!user) navigate('/login');
                                 else setShowAddSetlist(true);
                             }}
-                            className="p-3.5 rounded-2xl bg-secondary/80 border border-themed hover:border-accent/40 active:scale-95 transition-all text-left flex flex-col justify-between group"
+                            className="p-3.5 rounded-2xl bg-secondary hover:bg-surface-hover active:scale-[0.98] transition-all text-left flex flex-col justify-between group shadow-sm min-h-[82px] border-0"
                         >
-                            <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+                            <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                                 <Plus className="w-4 h-4 stroke-[2.5]" />
                             </div>
-                            <div>
-                                <p className="text-xs font-bold text-textprimary leading-tight">Create Setlist</p>
-                                <p className="text-[10px] text-textmuted">Plan new lineup</p>
+                            <p className="text-xs font-bold text-textprimary truncate leading-tight">New Setlist</p>
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                haptic('light');
+                                navigate('/schedule');
+                            }}
+                            className="p-3.5 rounded-2xl bg-secondary hover:bg-surface-hover active:scale-[0.98] transition-all text-left flex flex-col justify-between group shadow-sm min-h-[82px] border-0"
+                        >
+                            <div className="w-8 h-8 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                <Users className="w-4 h-4 stroke-[2.5]" />
                             </div>
+                            <p className="text-xs font-bold text-textprimary truncate leading-tight">Ministers</p>
                         </button>
 
                         <button
@@ -170,47 +201,12 @@ export default function HomeScreen() {
                                 haptic('light');
                                 setShowAddSong(true);
                             }}
-                            className="p-3.5 rounded-2xl bg-secondary/80 border border-themed hover:border-accent/40 active:scale-95 transition-all text-left flex flex-col justify-between group"
+                            className="p-3.5 rounded-2xl bg-secondary hover:bg-surface-hover active:scale-[0.98] transition-all text-left flex flex-col justify-between group shadow-sm min-h-[82px] border-0"
                         >
-                            <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+                            <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                                 <Music className="w-4 h-4 stroke-[2.5]" />
                             </div>
-                            <div>
-                                <p className="text-xs font-bold text-textprimary leading-tight">Add Song</p>
-                                <p className="text-[10px] text-textmuted">New lyrics & key</p>
-                            </div>
-                        </button>
-
-                        <button
-                            onClick={() => {
-                                haptic('light');
-                                navigate('/library');
-                            }}
-                            className="p-3.5 rounded-2xl bg-secondary/80 border border-themed hover:border-accent/40 active:scale-95 transition-all text-left flex flex-col justify-between group"
-                        >
-                            <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
-                                <Layers className="w-4 h-4 stroke-[2.5]" />
-                            </div>
-                            <div>
-                                <p className="text-xs font-bold text-textprimary leading-tight">Song Library</p>
-                                <p className="text-[10px] text-textmuted">{songs?.length || 0} songs</p>
-                            </div>
-                        </button>
-
-                        <button
-                            onClick={() => {
-                                haptic('light');
-                                navigate('/setlists');
-                            }}
-                            className="p-3.5 rounded-2xl bg-secondary/80 border border-themed hover:border-accent/40 active:scale-95 transition-all text-left flex flex-col justify-between group"
-                        >
-                            <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
-                                <Calendar className="w-4 h-4 stroke-[2.5]" />
-                            </div>
-                            <div>
-                                <p className="text-xs font-bold text-textprimary leading-tight">Song Lineup</p>
-                                <p className="text-[10px] text-textmuted">{upcomingSetlists.length} scheduled</p>
-                            </div>
+                            <p className="text-xs font-bold text-textprimary truncate leading-tight">Add Song</p>
                         </button>
                     </div>
 
@@ -220,7 +216,7 @@ export default function HomeScreen() {
                             <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
                                 <Calendar className="w-3.5 h-3.5 text-accent" /> Upcoming Worship Service
                             </h2>
-                            {nextSetlist && (
+                            {user && nextSetlist && (
                                 <button
                                     onClick={() => navigate('/setlists')}
                                     className="text-[11px] font-semibold text-accent hover:underline flex items-center gap-0.5"
@@ -231,33 +227,69 @@ export default function HomeScreen() {
                             )}
                         </div>
 
-                        {nextSetlist ? (
-                            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-secondary via-elevated to-secondary border border-accent/30 p-5 shadow-xl">
-                                <div className="absolute -top-12 -right-12 w-40 h-40 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+                        {!user ? (
+                            <div className="relative overflow-hidden rounded-3xl bg-secondary/80 backdrop-blur-xl border border-themed p-6 text-center space-y-3.5 shadow-xl">
+                                <div className="w-12 h-12 rounded-2xl bg-accent/15 border border-accent/25 flex items-center justify-center text-accent mx-auto">
+                                    <Lock className="w-6 h-6" />
+                                </div>
+                                <div className="space-y-1">
+                                    <h3 className="text-sm font-bold text-textprimary">Worship Service & Schedule</h3>
+                                    <p className="text-xs text-textmuted max-w-xs mx-auto">
+                                        Sign in to view your church's upcoming worship service lineup and ministry schedule.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        haptic('light');
+                                        navigate('/login');
+                                    }}
+                                    className="px-5 py-2.5 bg-accent text-onaccent rounded-xl text-xs font-bold shadow-md shadow-accent/20 active:scale-95 transition-all inline-flex items-center gap-1.5"
+                                >
+                                    <LogIn className="w-3.5 h-3.5" />
+                                    <span>Sign In to View Schedule</span>
+                                </button>
+                            </div>
+                        ) : nextSetlist ? (
+                            <div className="relative overflow-hidden rounded-3xl bg-secondary/80 backdrop-blur-xl border border-themed hover:border-emerald-500/30 p-5 shadow-xl transition-all group">
+                                {/* Subtle Ambient Glow */}
+                                <div className="absolute -top-12 -right-12 w-36 h-36 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none group-hover:bg-emerald-500/15 transition-all" />
+                                <div className="absolute -bottom-10 -left-10 w-28 h-28 bg-accent/5 rounded-full blur-2xl pointer-events-none" />
                                 
-                                <div className="relative z-10 space-y-3">
+                                <div className="relative z-10 space-y-3.5">
                                     <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-accent/20 text-accent border border-accent/30 mb-1.5">
-                                                {nextSetlist.date || 'Upcoming'}
-                                            </span>
-                                            <h3 className="text-lg font-bold font-serif text-textprimary leading-tight">
-                                                {nextSetlist.title}
-                                            </h3>
-                                            <p className="text-xs text-textmuted mt-0.5">
-                                                Prepared by <span className="text-textprimary font-medium">{nextSetlist.preparedBy || 'Worship Leader'}</span>
-                                            </p>
+                                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                                            <SetlistDateBadge date={nextSetlist.date} isToday={isToday} />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-1.5 mb-0.5">
+                                                    {isToday ? (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                                            Today's Service
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-bold text-emerald-400 tracking-wider uppercase">
+                                                            This Week
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <h3 className="text-lg font-bold text-textprimary leading-tight truncate">
+                                                    {nextSetlist.title}
+                                                </h3>
+                                                <p className="text-xs text-textmuted mt-0.5 truncate">
+                                                    Prepared by <span className="text-textprimary font-medium">{nextSetlist.preparedBy || 'Worship Leader'}</span>
+                                                </p>
+                                            </div>
                                         </div>
 
                                         <div className="text-right shrink-0">
-                                            <span className="text-xs font-extrabold text-accent bg-accent/10 px-2.5 py-1 rounded-xl border border-accent/20 inline-block">
-                                                {nextSetlist.songIds?.length || 0} Songs
+                                            <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-xl border border-emerald-500/20 inline-block">
+                                                {nextSetlist.songIds?.length || 0} {nextSetlist.songIds?.length === 1 ? 'Song' : 'Songs'}
                                             </span>
                                         </div>
                                     </div>
 
                                     {nextSetlist.notes && (
-                                        <p className="text-xs text-textmuted/90 bg-primary/60 p-2.5 rounded-xl border border-themed italic line-clamp-2">
+                                        <p className="text-xs text-textmuted bg-primary/40 p-2.5 rounded-xl border border-themed italic line-clamp-2">
                                             "{nextSetlist.notes}"
                                         </p>
                                     )}
@@ -272,7 +304,7 @@ export default function HomeScreen() {
                                             className="flex-1 py-2.5 px-4 bg-accent text-onaccent font-bold text-xs rounded-xl shadow-lg shadow-accent/25 hover:bg-accent/90 active:scale-98 transition flex items-center justify-center gap-1.5"
                                         >
                                             <Play className="w-4 h-4 fill-current" />
-                                            <span>Start Live Jam</span>
+                                            <span>Open Setlist</span>
                                         </button>
 
                                         <button
@@ -280,7 +312,7 @@ export default function HomeScreen() {
                                                 haptic('light');
                                                 navigate('/setlists');
                                             }}
-                                            className="py-2.5 px-4 bg-secondary border border-themed text-textprimary hover:border-accent font-semibold text-xs rounded-xl active:scale-98 transition flex items-center gap-1"
+                                            className="py-2.5 px-4 bg-secondary hover:bg-surface-hover text-textprimary font-semibold text-xs rounded-xl active:scale-98 transition flex items-center gap-1 border-0"
                                         >
                                             <span>View Details</span>
                                             <ArrowUpRight className="w-3.5 h-3.5 text-textmuted" />
@@ -289,14 +321,14 @@ export default function HomeScreen() {
                                 </div>
                             </div>
                         ) : (
-                            <div className="rounded-3xl bg-secondary/50 border border-themed p-6 text-center space-y-3">
-                                <div className="w-12 h-12 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent mx-auto">
-                                    <Calendar className="w-6 h-6" />
+                            <div className="rounded-3xl bg-secondary/60 backdrop-blur-md border border-themed p-6 text-center space-y-3.5">
+                                <div className="w-11 h-11 rounded-2xl bg-accent/15 border border-accent/25 flex items-center justify-center text-accent mx-auto">
+                                    <Calendar className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h3 className="text-sm font-bold text-textprimary">No Upcoming Setlist Planned</h3>
+                                    <h3 className="text-sm font-bold text-textprimary">No Service Scheduled This Week</h3>
                                     <p className="text-xs text-textmuted mt-1 max-w-xs mx-auto">
-                                        Prepare your song lineup, arrange keys, and organize your praise and worship set.
+                                        Plan your song lineup, arrange keys, and organize your praise and worship set.
                                     </p>
                                 </div>
                                 <button
@@ -383,6 +415,10 @@ export default function HomeScreen() {
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 haptic('light');
+                                                if (!user) {
+                                                    navigate('/login');
+                                                    return;
+                                                }
                                                 setQuickAddSong(song);
                                             }}
                                             className="w-9 h-9 rounded-full text-textmuted hover:text-accent hover:bg-accent/15 flex items-center justify-center active:scale-90 transition-all shrink-0"
@@ -399,8 +435,8 @@ export default function HomeScreen() {
                     {/* ===== FAVORITES SECTION (MOST PLAYED ACROSS ALL SETLISTS) ===== */}
                     <div className="space-y-3">
                         <div className="flex items-center justify-between px-1">
-                            <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
-                                <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400" /> Favorites (Most Used)
+                            <h2 className="text-xs font-semibold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
+                                <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400" /> Favorites
                             </h2>
                             {favoriteSongs.length > 0 && (
                                 <span className="text-[11px] font-semibold text-rose-400/90">
@@ -467,6 +503,10 @@ export default function HomeScreen() {
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 haptic('light');
+                                                if (!user) {
+                                                    navigate('/login');
+                                                    return;
+                                                }
                                                 setQuickAddSong(song);
                                             }}
                                             className="w-9 h-9 rounded-full text-textmuted hover:text-accent hover:bg-accent/15 flex items-center justify-center active:scale-90 transition-all shrink-0"
@@ -481,7 +521,7 @@ export default function HomeScreen() {
                     </div>
 
                     {/* ===== RECENT SETLISTS / LINEUPS (MATCHING FEATURED SONGS STYLE) ===== */}
-                    {setlists && setlists.length > 0 && (
+                    {user && setlists && setlists.length > 0 && (
                         <div className="space-y-3">
                             <div className="flex items-center justify-between px-1">
                                 <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
@@ -543,7 +583,7 @@ export default function HomeScreen() {
                                                 navigate(`/setlist-player/${setlist.id}`);
                                             }}
                                             className="w-9 h-9 rounded-full text-textmuted hover:text-accent hover:bg-accent/15 flex items-center justify-center active:scale-90 transition-all shrink-0"
-                                            title="Launch Live Jam"
+                                            title="Open Setlist"
                                         >
                                             <Play className="w-4 h-4 fill-current" />
                                         </button>

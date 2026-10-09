@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { ArrowClockwise as RefreshCw } from '@phosphor-icons/react';
 
 export default function PullToRefresh({ onRefresh, children }) {
     const [pullDistance, setPullDistance] = useState(0);

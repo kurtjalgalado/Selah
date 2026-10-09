@@ -1,23 +1,17 @@
-// Chromatic scale with sharps/flats for transposition
-export const KEYS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+// Chromatic scales
+export const FLAT_KEYS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+export const SHARP_KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+export const KEYS = FLAT_KEYS;
 
-// Chord suffixes that might appear after root note
-const CHORD_SUFFIXES = /^(maj|min|m|dim|aug|sus|add|\/|-|\+|\d|\.|\(|\)|#|b)*/;
+// Flat to Sharp and Sharp to Flat mappings
+export const FLAT_TO_SHARP = {
+    'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#',
+    'Cb': 'B', 'Fb': 'E'
+};
 
-// Sharp/flat preference by key
-const KEY_PREFERENCES = {
-    'C': ['C', 'D', 'E', 'F', 'G', 'A', 'B'],
-    'Db': ['Db', 'Eb', 'F', 'Gb', 'Ab', 'Bb', 'C'],
-    'D': ['D', 'E', 'F#', 'G', 'A', 'B', 'C#'],
-    'Eb': ['Eb', 'F', 'G', 'Ab', 'Bb', 'C', 'D'],
-    'E': ['E', 'F#', 'G#', 'A', 'B', 'C#', 'D#'],
-    'F': ['F', 'G', 'A', 'Bb', 'C', 'D', 'E'],
-    'Gb': ['Gb', 'Ab', 'Bb', 'Cb', 'Db', 'Eb', 'F'],
-    'G': ['G', 'A', 'B', 'C', 'D', 'E', 'F#'],
-    'Ab': ['Ab', 'Bb', 'C', 'Db', 'Eb', 'F', 'G'],
-    'A': ['A', 'B', 'C#', 'D', 'E', 'F#', 'G#'],
-    'Bb': ['Bb', 'C', 'D', 'Eb', 'F', 'G', 'A'],
-    'B': ['B', 'C#', 'D#', 'E', 'F#', 'G#', 'A#'],
+export const SHARP_TO_FLAT = {
+    'C#': 'Db', 'D#': 'Eb', 'F#': 'Gb', 'G#': 'Ab', 'A#': 'Bb',
+    'E#': 'F', 'B#': 'C'
 };
 
 // Map flat/sharp equivalents
@@ -26,6 +20,16 @@ const ENHARMONIC_MAP = {
     'Cb': 'B', 'Fb': 'E', 'E#': 'F', 'B#': 'C',
     'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#',
 };
+
+/**
+ * Format a Key or Root according to the preferred accidental ('sharp' | 'flat')
+ */
+export function formatKey(key, accidentalMode = 'sharp') {
+    if (!key) return 'C';
+    if (accidentalMode === 'sharp' && FLAT_TO_SHARP[key]) return FLAT_TO_SHARP[key];
+    if (accidentalMode === 'flat' && SHARP_TO_FLAT[key]) return SHARP_TO_FLAT[key];
+    return key;
+}
 
 /**
  * Normalize key to standard chromatic scale representation
@@ -64,11 +68,18 @@ export function isSectionLabel(text) {
 const VALID_CHORD_SUFFIX_REGEX = /^(maj|maj7|maj9|maj11|maj13|min|min7|m|m7|m9|m11|m13|dim|dim7|aug|sus|sus2|sus4|add|add9|add11|\/|-|\+|\d|\.|\(|\)|#|b|7|9|11|13|6|2|4|5)*$/i;
 
 /**
- * Transpose a single chord by a number of semitones
+ * Transpose a single chord by a number of semitones and format with preferred accidental
  */
-export function transposeChord(chord, semitones) {
+export function transposeChord(chord, semitones = 0, accidentalMode = 'sharp') {
     if (!chord) return chord;
     if (isSectionLabel(chord)) return chord;
+
+    // Handle slash chords like C/G or Db/F
+    if (chord.includes('/')) {
+        const [bass, treble] = chord.split('/');
+        if (isSectionLabel(bass) || isSectionLabel(treble)) return chord;
+        return `${transposeChord(bass, semitones, accidentalMode)}/${transposeChord(treble, semitones, accidentalMode)}`;
+    }
 
     // Match root note (including sharps/flats) and suffix
     const match = chord.match(/^([A-G][#b]?)(.*)/);
@@ -76,12 +87,12 @@ export function transposeChord(chord, semitones) {
 
     const [, root, suffix] = match;
 
-    // Reject non-chord words starting with A-G (e.g. Chorus -> horus, Bridge -> ridge, Ending -> nding)
+    // Reject non-chord words starting with A-G
     if (suffix && !VALID_CHORD_SUFFIX_REGEX.test(suffix)) {
         return chord;
     }
 
-    // Normalize root for lookup
+    // Normalize root for index lookup
     let normalizedRoot = root;
     if (ENHARMONIC_MAP[root] && !KEYS.includes(root)) {
         normalizedRoot = ENHARMONIC_MAP[root];
@@ -89,15 +100,15 @@ export function transposeChord(chord, semitones) {
 
     let idx = KEYS.indexOf(normalizedRoot);
     if (idx === -1) {
-        // Try the reverse mapping
         idx = KEYS.indexOf(ENHARMONIC_MAP[root] || root);
     }
-    if (idx === -1) return chord; // Can't transpose unknown chord
+    if (idx === -1) return chord;
 
     let newIdx = (idx + semitones) % 12;
     if (newIdx < 0) newIdx += 12;
 
-    let newRoot = KEYS[newIdx];
+    const targetScale = accidentalMode === 'flat' ? FLAT_KEYS : SHARP_KEYS;
+    const newRoot = targetScale[newIdx];
     return newRoot + suffix;
 }
 
@@ -105,27 +116,21 @@ export function transposeChord(chord, semitones) {
  * Transpose all chords in a line of text
  * Assumes chords are in [brackets] format: [Am] [C/G] [F]
  */
-export function transposeLine(line, semitones) {
+export function transposeLine(line, semitones = 0, accidentalMode = 'sharp') {
     return line.replace(/\[([^\]]+)\]/g, (match, chord) => {
         if (isSectionLabel(chord)) return `[${chord}]`;
-        // Handle slash chords like C/G
-        if (chord.includes('/')) {
-            const [bass, treble] = chord.split('/');
-            if (isSectionLabel(bass) || isSectionLabel(treble)) return `[${chord}]`;
-            return `[${transposeChord(bass, semitones)}/${transposeChord(treble, semitones)}]`;
-        }
-        return `[${transposeChord(chord, semitones)}]`;
+        return `[${transposeChord(chord, semitones, accidentalMode)}]`;
     });
 }
 
 /**
- * Transpose entire lyrics block with embedded chords
+ * Transpose entire lyrics block with embedded chords and apply accidental formatting
  */
-export function transposeLyrics(lyrics, semitones) {
-    if (semitones === 0) return lyrics;
+export function transposeLyrics(lyrics, semitones = 0, accidentalMode = 'sharp') {
+    if (!lyrics) return '';
     return lyrics
         .split('\n')
-        .map(line => transposeLine(line, semitones))
+        .map(line => transposeLine(line, semitones, accidentalMode))
         .join('\n');
 }
 
@@ -133,8 +138,8 @@ export function transposeLyrics(lyrics, semitones) {
  * Calculate semitones between two keys
  */
 export function semitonesBetween(fromKey, toKey) {
-    const fromIdx = KEYS.indexOf(fromKey);
-    const toIdx = KEYS.indexOf(toKey);
+    const fromIdx = getKeyIndex(fromKey);
+    const toIdx = getKeyIndex(toKey);
     if (fromIdx === -1 || toIdx === -1) return 0;
     return (toIdx - fromIdx + 12) % 12;
 }

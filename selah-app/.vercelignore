@@ -1,0 +1,9 @@
+android/
+.git/
+node_modules/
+dist/
+scripts/
+*.apk
+*.log
+.vscode/
+.idea/

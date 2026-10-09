@@ -22,7 +22,7 @@ export default class ErrorBoundary extends Component {
             <div className="w-16 h-16 mx-auto rounded-full bg-accent/10 flex items-center justify-center">
               <span className="text-3xl text-accent">!</span>
             </div>
-            <h2 className="text-xl font-serif font-bold text-textprimary">Something went wrong</h2>
+            <h2 className="text-xl font-bold text-textprimary">Something went wrong</h2>
             <p className="text-sm text-textmuted">
               {this.state.error?.message || 'An unexpected error occurred'}
             </p>

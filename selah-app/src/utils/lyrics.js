@@ -89,6 +89,40 @@ export function separateChords(line) {
 
     return {
         chordLine,
-        lyricLine: lyricText.trim(),
+        lyricLine: lyricText.replace(/\s+$/, ''),
     };
+}
+
+/**
+ * Parse a chord-annotated line into an array of { chord, text } tokens
+ * for synchronized, drift-free chord-above-lyric display.
+ */
+export function parseChordLineTokens(line) {
+    if (!line && line !== '') return [];
+    if (!line) return [];
+    if (!isChordLine(line)) {
+        return [{ chord: '', text: line }];
+    }
+
+    const regex = /\[([^\]]+)\]/g;
+    let match;
+    const tokens = [];
+    let lastIndex = 0;
+    let pendingChord = '';
+
+    while ((match = regex.exec(line)) !== null) {
+        const textBefore = line.substring(lastIndex, match.index);
+        if (textBefore || pendingChord) {
+            tokens.push({ chord: pendingChord, text: textBefore });
+        }
+        pendingChord = match[1];
+        lastIndex = match.index + match[0].length;
+    }
+
+    const textAfter = line.substring(lastIndex);
+    if (textAfter || pendingChord) {
+        tokens.push({ chord: pendingChord, text: textAfter });
+    }
+
+    return tokens;
 }

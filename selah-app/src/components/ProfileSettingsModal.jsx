@@ -4,7 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../supabase/client';
 import { requestNotificationPermission, isNotificationGranted, getNotificationHistory, clearNotificationHistory } from '../utils/notifications';
 import { isHapticEnabled, setHapticEnabled, haptic } from '../utils/haptics';
-import { X, User, Lock, Bell, Save, Trash2, Smartphone, Moon, Sun, Palette, Check } from 'lucide-react';
+import { X, User, Lock, Bell, FloppyDisk as Save, Trash as Trash2, DeviceMobile as Smartphone, Moon, Sun, Palette, Check } from '@phosphor-icons/react';
 
 export default function ProfileSettingsModal({ isOpen, onClose }) {
     const { user } = useAuth();
@@ -129,7 +129,7 @@ export default function ProfileSettingsModal({ isOpen, onClose }) {
                             <User className="w-5 h-5" />
                         </div>
                         <div>
-                            <h3 className="font-serif font-bold text-lg text-textprimary leading-tight">Profile & Preferences</h3>
+                            <h3 className="font-bold text-lg text-textprimary leading-tight">Profile & Preferences</h3>
                             <p className="text-xs text-textmuted">Manage theme, account, and notifications</p>
                         </div>
                     </div>

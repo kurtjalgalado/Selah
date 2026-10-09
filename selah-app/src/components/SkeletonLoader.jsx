@@ -71,7 +71,7 @@ export function SetlistSkeletonCards() {
                     </div>
 
                     {/* Bottom actions row */}
-                    <div className="pt-2 border-t border-themed/30 flex items-center justify-between">
+                    <div className="pt-2 border-t border-themed flex items-center justify-between">
                         <SkeletonBlock className="w-16 h-4 rounded-md opacity-70" />
                         <SkeletonBlock className="w-24 h-8 rounded-xl" />
                     </div>

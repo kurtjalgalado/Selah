@@ -13,6 +13,7 @@ import { LibrarySkeletonCards } from './components/SkeletonLoader';
 const HomeScreen = lazy(() => import('./screens/HomeScreen'));
 const LibraryScreen = lazy(() => import('./screens/LibraryScreen'));
 const SetlistScreen = lazy(() => import('./screens/SetlistScreen'));
+const ScheduleScreen = lazy(() => import('./screens/ScheduleScreen'));
 const ProfileScreen = lazy(() => import('./screens/ProfileScreen'));
 const SongDetailScreen = lazy(() => import('./screens/SongDetailScreen'));
 const SetlistPlayerScreen = lazy(() => import('./screens/SetlistPlayerScreen'));
@@ -21,6 +22,9 @@ const RegisterScreen = lazy(() => import('./screens/RegisterScreen'));
 
 export const ToastContext = createContext(() => { });
 export const UIContext = createContext({ openProfileSettings: () => {} });
+
+import { handleBack, useBackHandler } from './utils/backHandler';
+import OnboardingModal from './components/OnboardingModal';
 
 function RouteLoader() {
   return (
@@ -45,10 +49,15 @@ function BackButtonHandler() {
   const location = useLocation();
   const [showExitModal, setShowExitModal] = useState(false);
 
+  useBackHandler(showExitModal, () => setShowExitModal(false));
+
   useEffect(() => {
     let listener;
     CapApp.addListener('backButton', ({ canGoBack }) => {
-      const topLevelRoutes = ['/', '/home', '/library', '/setlists', '/profile', '/login'];
+      if (handleBack()) {
+        return;
+      }
+      const topLevelRoutes = ['/', '/home', '/library', '/setlists', '/schedule', '/profile', '/login'];
       const isTopLevel = topLevelRoutes.includes(location.pathname);
       if (!isTopLevel && (canGoBack || window.history.length > 1)) {
         navigate(-1);
@@ -57,8 +66,16 @@ function BackButtonHandler() {
       }
     }).then(l => { listener = l; });
 
+    const handleWindowPopState = (e) => {
+      if (handleBack()) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('popstate', handleWindowPopState);
+
     return () => {
       if (listener) listener.remove();
+      window.removeEventListener('popstate', handleWindowPopState);
     };
   }, [location.pathname, navigate]);
 
@@ -67,7 +84,7 @@ function BackButtonHandler() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fadeIn">
       <div className="bg-elevated border border-themed rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4 text-center">
-        <h3 className="text-xl font-serif font-bold text-textprimary">Exit Selah?</h3>
+        <h3 className="text-xl font-bold text-textprimary">Exit Selah?</h3>
         <p className="text-textmuted text-sm">Are you sure you want to exit the application?</p>
         <div className="flex justify-center gap-3 pt-2">
           <button
@@ -88,6 +105,19 @@ function BackButtonHandler() {
   );
 }
 
+function AppShell({ children }) {
+  const { pathname } = useLocation();
+  const isHidden = ['/login', '/register'].includes(pathname) || 
+                   pathname.startsWith('/song/') || 
+                   pathname.startsWith('/setlist-player/');
+
+  return (
+    <div className={`min-h-screen transition-all duration-200 ${!isHidden ? 'md:pl-20 lg:pl-60' : ''}`}>
+      {children}
+    </div>
+  );
+}
+
 export default function App() {
   const { user, loading } = useAuth();
   const [toast, setToast] = useState(null);
@@ -97,6 +127,23 @@ export default function App() {
   useEffect(() => {
     seedDatabase().then(() => setSeeded(true)).catch(() => setSeeded(true));
   }, []);
+
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    try {
+      return !localStorage.getItem('selah_onboarding_completed') && !user;
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (user) {
+      try {
+        localStorage.setItem('selah_onboarding_completed', 'true');
+      } catch {}
+      setShowOnboarding(false);
+    }
+  }, [user]);
 
   // Toast helper
   const showToast = (message, type = 'success') => {
@@ -112,11 +159,13 @@ export default function App() {
       <HashRouter>
         <ScrollToTop />
         <BackButtonHandler />
+        <OnboardingModal isOpen={showOnboarding} onComplete={() => setShowOnboarding(false)} />
         <ToastContext.Provider value={showToast}>
           <UIContext.Provider value={uiContextValue}>
             <SongCacheProvider>
-              <Suspense fallback={<RouteLoader />}>
-                <Routes>
+              <AppShell>
+                <Suspense fallback={<RouteLoader />}>
+                  <Routes>
                   {/* Auth routes */}
                   <Route path="/login" element={<LoginScreen />} />
                   <Route path="/register" element={<RegisterScreen />} />
@@ -126,6 +175,7 @@ export default function App() {
                   <Route path="/home" element={<HomeScreen />} />
                   <Route path="/library" element={<LibraryScreen />} />
                   <Route path="/setlists" element={<SetlistScreen />} />
+                  <Route path="/schedule" element={<ScheduleScreen />} />
                   <Route path="/profile" element={<ProfileScreen />} />
 
                   {/* Details / Player routes */}
@@ -136,10 +186,11 @@ export default function App() {
                   <Route path="*" element={<Navigate to="/home" replace />} />
                 </Routes>
               </Suspense>
+            </AppShell>
 
-              {/* Material 3 Expressive Bottom Navigation Bar */}
-              <BottomNavBar />
-            </SongCacheProvider>
+            {/* Material 3 Expressive Bottom Navigation Bar */}
+            <BottomNavBar />
+          </SongCacheProvider>
 
             {toast && <Toast key={toast.id} {...toast} onClose={() => setToast(null)} />}
           </UIContext.Provider>

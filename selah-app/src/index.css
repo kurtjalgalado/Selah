@@ -12,7 +12,8 @@
   --text-muted: #8892B0;
   --success: #64FFDA;
   --danger: #FF6B6B;
-  --border: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-rgb: 255 255 255;
   --glass-bg: rgba(0, 0, 0, 0.88);
   --surface-hover: rgba(255, 255, 255, 0.06);
   --surface-active: rgba(255, 255, 255, 0.12);
@@ -32,13 +33,14 @@
   --bg-primary: #FFFFFF;
   --bg-secondary: #F4F4F7;
   --bg-elevated: #FFFFFF;
-  --accent: #B8941E;
-  --accent-soft: rgba(184, 148, 30, 0.12);
+  --accent: #9E7A12;
+  --accent-soft: rgba(158, 122, 18, 0.12);
   --text-primary: #111118;
   --text-muted: #626A84;
   --success: #0D9668;
   --danger: #E53E3E;
-  --border: rgba(0, 0, 0, 0.08);
+  --border: rgba(0, 0, 0, 0.06);
+  --border-rgb: 0 0 0;
   --glass-bg: rgba(255, 255, 255, 0.88);
   --surface-hover: rgba(0, 0, 0, 0.04);
   --surface-active: rgba(0, 0, 0, 0.08);
@@ -177,6 +179,49 @@ body {
   animation: slideUpModal 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes trayPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(-6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-trayPop {
+  animation: trayPop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes trayDrop {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slideLeft {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slideLeft {
+  animation: slideLeft 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-trayDrop {
+  animation: trayDrop 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 .animate-expandAccordion {
   animation: expandAccordion 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   overflow: hidden;
@@ -199,7 +244,7 @@ body {
 
 /* Key badge */
 .key-badge {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: 'JetBrains Mono', 'Courier New', Courier, monospace;
   background: var(--bg-primary);
   border: 1px solid var(--border);
   color: var(--accent);
@@ -207,7 +252,130 @@ body {
 
 /* Chord Font */
 pre, code, .font-mono, .chord-line, .chord-text {
-  font-family: 'Courier New', Courier, monospace !important;
+  font-family: 'JetBrains Mono', 'Courier New', Courier, monospace !important;
   font-weight: 700 !important;
   letter-spacing: 0.02em;
+}
+
+/* Print frame (screen: invisible structure) */
+.print-frame {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+.print-frame td {
+  padding: 0;
+  vertical-align: top;
+}
+.print-frame-spacer {
+  height: 0;
+}
+
+/* Global Print Isolation & Page Rules
+   - 12mm margins tuned for A4 (186mm content width); width is fluid so Letter/Legal/A5 also fit.
+   - Android WebView ignores @page margins: main.jsx adds html.android-print and resets
+     @page margin to 0, and .print-frame recreates the margins on every sheet. */
+@media print {
+  @page {
+    size: auto;
+    margin: 12mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Completely hide main application root and any body-level overlays outside #print-root */
+  #root,
+  body > *:not(#print-root),
+  .no-print,
+  .print-hidden,
+  [data-no-print] {
+    display: none !important;
+  }
+
+  /* Ensure print root is unconstrained and fully visible */
+  #print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    overflow: visible !important;
+  }
+
+  .print-modal-backdrop {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    overflow: visible !important;
+    animation: none !important;
+  }
+
+  .printable-wrapper {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-sheet {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+  }
+
+  .print-sheet + .print-sheet,
+  .print-page-break {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .print-keep,
+  .song-section,
+  .song-print-card {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .song-print-card {
+    border: 1px solid #e5e7eb !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    border-radius: 8px !important;
+    padding: 10px !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  /* Android margin fallback */
+  html.android-print .print-frame-spacer {
+    height: 12mm;
+  }
+  html.android-print .print-frame-body {
+    padding: 0 12mm;
+  }
 }
