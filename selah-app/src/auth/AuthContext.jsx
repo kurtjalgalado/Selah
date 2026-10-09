@@ -206,18 +206,32 @@ export function AuthProvider({ children }) {
     const signIn = async (identifier, password) => {
         let targetEmail = identifier.trim();
 
-        // If identifier does not contain '@', look up username in profiles
+        // If identifier does not contain '@', look up username or full name in profiles
         if (!targetEmail.includes('@')) {
-            const { data: profileRecord } = await supabase
+            // 1. Exact match on username or full_name
+            let { data: profileRecord } = await supabase
                 .from('profiles')
                 .select('email')
-                .ilike('username', targetEmail)
+                .or(`username.ilike.${targetEmail},full_name.ilike.${targetEmail}`)
                 .maybeSingle();
+
+            // 2. Fallback to fuzzy prefix or substring match
+            if (!profileRecord?.email) {
+                const { data: fuzzyRecords } = await supabase
+                    .from('profiles')
+                    .select('email')
+                    .or(`username.ilike.%${targetEmail}%,full_name.ilike.%${targetEmail}%`)
+                    .limit(2);
+
+                if (fuzzyRecords && fuzzyRecords.length === 1) {
+                    profileRecord = fuzzyRecords[0];
+                }
+            }
 
             if (profileRecord && profileRecord.email) {
                 targetEmail = profileRecord.email;
             } else {
-                throw new Error('Username not found. Please enter a valid username or email.');
+                throw new Error(`Account "${targetEmail}" not found. Please enter a valid email or username.`);
             }
         }
 

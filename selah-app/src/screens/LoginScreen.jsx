@@ -36,7 +36,9 @@ export default function LoginScreen() {
         } catch (err) {
             const msg = err.message || 'Failed to sign in';
             if (msg.includes('Invalid login credentials')) {
-                setError('Invalid email/username or password. Use "Forgot password" below to receive a reset link by email.');
+                setError('Invalid email/username or password. Initial default password for migrated worship team accounts is "Selah2026!" or tap "Forgot password" below.');
+            } else if (msg.includes('Email not confirmed')) {
+                setError('Email not confirmed. Please execute the updated Supabase SQL schema in your Supabase SQL Editor to auto-confirm accounts.');
             } else {
                 setError(msg);
             }
@@ -73,16 +75,25 @@ export default function LoginScreen() {
 
             // If identifier does not contain '@', look up email in profiles table
             if (!targetEmail.includes('@')) {
-                const { data: prof } = await supabase
+                let { data: prof } = await supabase
                     .from('profiles')
                     .select('email')
-                    .ilike('username', targetEmail)
+                    .or(`username.ilike.${targetEmail},full_name.ilike.${targetEmail}`)
                     .maybeSingle();
+
+                if (!prof?.email) {
+                    const { data: fuzzy } = await supabase
+                        .from('profiles')
+                        .select('email')
+                        .or(`username.ilike.%${targetEmail}%,full_name.ilike.%${targetEmail}%`)
+                        .limit(2);
+                    if (fuzzy && fuzzy.length === 1) prof = fuzzy[0];
+                }
 
                 if (prof?.email) {
                     targetEmail = prof.email;
                 } else {
-                    throw new Error(`Username "${targetEmail}" not found. Please enter your email address.`);
+                    throw new Error(`Account "${targetEmail}" not found. Please enter your email address.`);
                 }
             }
 
