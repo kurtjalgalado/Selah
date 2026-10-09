@@ -1,62 +1,162 @@
 # Selah — Worship Planner
 
-A mobile-first worship setlist planner for churches and worship teams. Built with React + Vite, deployed as an Android app via Capacitor.
+[![Tests](https://img.shields.io/badge/tests-102%20passed-brightgreen.svg)](file:///c:/Users/Admin/Desktop/Selah/Selah/selah-app)
+[![Vercel Deployment](https://img.shields.io/badge/deployed%20on-Vercel-black?logo=vercel)](https://jfcm-selah.vercel.app)
+[![Android](https://img.shields.io/badge/platform-Android%20%7C%20Web%20%7C%20iOS-blue?logo=android)](file:///c:/Users/Admin/Desktop/Selah/Selah/selah-app/selah-app-debug.apk)
+[![Icons](https://img.shields.io/badge/icons-Phosphor%20Icons-purple)](https://phosphoricons.com)
 
-## Features
+A modern, mobile-first worship planning and live performance application for churches and worship teams. Designed with **Apple Human Interface Guidelines (HIG)** aesthetic principles, offline-first IndexedDB storage, real-time Supabase cloud synchronization, and native cross-platform chord printing.
 
-- **Song Library** — 200+ pre-seeded worship songs with chords, lyrics, and metadata from selah.jfcm-missions.com
-- **Setlist Builder** — Create worship setlists with drag-and-drop song ordering, per-song key transposition, and A4 print charts
-- **Live Setlist Player** — Full-screen scrollable chord chart for stage use with adjustable font size
-- **Chord Transposition** — Real-time key transposition with Nashville/standard chord notation
-- **A4 Print / PDF** — 2-songs-per-page formatted charts with print-optimized CSS (works on Android via `PrintManager`)
-- **Supabase Sync** — Setlists, keys, dates, and arrangement sync across devices via Supabase Realtime + periodic background sync
-- **Pull to Refresh** — Manual database sync from Supabase
-- **Google Auth** — Login via Supabase Google OAuth
+---
 
-## Tech Stack
+## 🌟 Key Features
 
-| Layer | Tech |
-|-------|------|
-| Frontend | React 19, Vite, Tailwind CSS |
-| Local DB | Dexie.js (IndexedDB) |
-| Cloud Sync | Supabase (Postgres, Realtime, Auth) |
-| Mobile | Capacitor 7 (Android) |
-| Icons | Lucide React |
+### 🎵 Song Library & Smart Chords
+- **420+ Pre-seeded Worship Songs** with accurate chords, sections, key tags, and lyrics.
+- **Real-Time Key Transposition**: Instantly transpose songs by semitones with sharp (♯) and flat (♭) enharmonic preference toggles.
+- **Zero-Drift Chord Alignment**: Tokenized chord and lyric rendering via `ChordLineRenderer` preventing drift across varying screen widths and print viewports.
+- **Personal & Church Additions**: Add, edit, or customize songs locally with instant remote upsert.
 
-## Getting Started
+### 📋 Setlist Builder & Active Services
+- **Drag-and-Drop Order Management**: Organize lineups for Sunday Worship, Midweek Services, and Prayer Meetings.
+- **Per-Song Key Customization**: Set custom keys per setlist without altering the global master song key.
+- **Active Today Service Indicator**: Visual indicator highlighting lineups scheduled for the current date.
 
+### 🎸 Live Stage Player
+- **Full-Screen Stage Mode**: High-contrast, scrollable lyric and chord charts optimized for live worship leading.
+- **Bluetooth Stage Pedals**: Hands-free page turns and continuous scrolling via `PageDown`/`PageUp` and arrow pedal triggers (`useStagePedals`).
+- **Dynamic Font & Notation Scaling**: Quick font size slider and accidental switches on the stage action pill.
+
+### 📅 Minister Scheduling & Team Roster
+- **Role Assignment**: Assign ministers to roles including Worship Leader, Vocals, Acoustic Guitar, Electric Guitar, Bass, Keys, Drums, and Multimedia/AV.
+- **Quick Preset Carousel**: Horizontal service picker (Sunday Worship Service, Midweek Service, Prayer Meeting) designed for rapid scheduling without modal clutter.
+- **Role-Based Access Control (RBAC)**: Distinct permissions for Admins, Worship Leaders, and Team Members.
+
+### 🖨️ Cross-Platform Native Print Engine
+- **Android Native Print Services**: Resolves Chromium WebView's 0-margin clipping using table-based `PrintFrame` spacers, enforcing consistent **12mm hardware margins** across all Android devices.
+- **Apple AirPrint & Desktop**: Direct `@page { size: auto; margin: 12mm; }` styling supporting **ISO A4 (default)**, US Letter, Legal, and A5 paper sizes.
+- **Clean Printout Aesthetics**: Strips away unnecessary text, redundant headers/footers, and drop-shadow artifacts for clean, razor-sharp paper charts and PDF exports.
+
+### 🎨 Apple HIG-Inspired Minimal UI
+- **Phosphor Icons System**: Native Phosphor icons with light and dark mode adaptation.
+- **Borderless Elevation & Subtle Surfaces**: Removed harsh white outlines and high-contrast card borders in favor of smooth translucent layers and ergonomic 44px+ touch targets.
+- **Curated Avatar System**: 24 distinct hand-crafted SVG avatars for worship team members.
+
+### ☁️ Cloud Sync & Offline Reliability
+- **Offline-First Storage**: Local persistence with **Dexie.js (IndexedDB)** ensures full stage functionality without internet connectivity.
+- **Supabase Cloud Sync**: Instant remote synchronization, background heartbeat sync, and pull-to-refresh hydration.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Frontend Framework** | React 18, Vite 6 |
+| **Styling & Design** | Tailwind CSS 3, Vanilla CSS, Apple HIG tokens |
+| **Iconography** | Phosphor Icons (`@phosphor-icons/react`) |
+| **Local Database** | Dexie.js v4 (IndexedDB) |
+| **Backend & Auth** | Supabase (PostgreSQL, Row Level Security, Realtime Channels) |
+| **Mobile Runtime** | Capacitor 6 (Android native shell) |
+| **Testing** | Vitest 2, JSDOM (102 tests passed) |
+| **Deployment** | Vercel (Web), Gradle (Android APK) |
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js 18+
+- npm or pnpm
+- Android Studio / Android SDK (for mobile APK builds)
+
+### 1. Installation
 ```bash
-cd selah-app
+git clone https://github.com/kurtjalgalado/Selah.git
+cd Selah/selah-app
 npm install
+```
+
+### 2. Run Development Server
+```bash
 npm run dev
 ```
+Open your browser at `http://localhost:5173`.
 
-### Android Build
-
+### 3. Run Automated Tests
 ```bash
-npm run build
-npx cap sync android
-cd android && ./gradlew assembleDebug
+npm test
+```
+Executes all 102 unit tests verifying chord transposition, RBAC, avatar management, notification triggers, and Dexie database seeding.
+
+---
+
+## 📱 Android Build & Deployment
+
+### One-Command Pipeline
+Run the integrated build, test, Vercel deployment, and APK generator:
+```bash
+npm run deploy:all
 ```
 
-APK output: `android/app/build/outputs/apk/debug/app-debug.apk`
+### Manual Android Build
+```bash
+# Compile web bundle and sync Capacitor Android assets
+npm run android:sync
 
-## Project Structure
-
+# Build Android Debug APK
+npm run build:apk
 ```
-selah-app/
-├── src/
-│   ├── screens/          # SetlistScreen, LibraryScreen, SongDetailScreen, SetlistPlayerScreen
-│   ├── components/       # PullToRefresh
-│   ├── auth/             # AuthContext (Supabase Google OAuth)
-│   ├── db/               # Dexie schema, scraped_songs.json seed
-│   ├── supabase/         # client.js, sync.js (realtime + background sync)
-│   └── utils/            # chords.js, lyrics.js
-├── android/              # Capacitor Android project
-├── public/               # Icons, favicon
-└── supabase_schema.sql   # Database schema
+The compiled APK is placed at:
+```
+selah-app/selah-app-debug.apk
 ```
 
-## License
+---
 
-Private — JFCM Missions
+## 📂 Project Structure
+
+```
+Selah/
+├── selah-app/
+│   ├── android/                  # Native Android Capacitor Gradle project
+│   ├── public/
+│   │   └── avatars/              # 24 custom SVG team avatars
+│   ├── scripts/
+│   │   ├── build_and_deploy.js   # Automated test + Vercel + APK pipeline
+│   │   ├── build_apk.js          # Gradle APK build runner
+│   │   ├── deploy_vercel.js      # Production Vercel deploy script
+│   │   └── sync_supabase_schema.js # Supabase schema and table validator
+│   ├── src/
+│   │   ├── auth/                 # Supabase authentication context
+│   │   ├── components/
+│   │   │   ├── ChordLineRenderer.jsx  # Tokenized zero-drift chord renderer
+│   │   │   ├── PrintFrame.jsx         # Cross-platform 12mm print table frame
+│   │   │   ├── BottomNavBar.jsx       # Apple HIG bottom navigation
+│   │   │   ├── TopBarNotificationBell.jsx
+│   │   │   ├── AssignMinisterBottomSheet.jsx
+│   │   │   └── ...
+│   │   ├── db/                   # Dexie schema and seed logic
+│   │   ├── screens/
+│   │   │   ├── HomeScreen.jsx
+│   │   │   ├── LibraryScreen.jsx
+│   │   │   ├── SongDetailScreen.jsx
+│   │   │   ├── SetlistScreen.jsx
+│   │   │   ├── SetlistPlayerScreen.jsx
+│   │   │   ├── ScheduleScreen.jsx
+│   │   │   └── ProfileScreen.jsx
+│   │   ├── supabase/             # Client & realtime synchronization
+│   │   └── utils/                # Chords, lyrics, stage pedals, RBAC, backhandler
+│   ├── supabase_schema.sql       # Complete PostgreSQL schema
+│   ├── vitest.config.js          # Unit testing configuration
+│   └── package.json
+├── CHANGELOG.md                  # Comprehensive version history
+└── README.md
+```
+
+---
+
+## 📄 License & Team
+
+Developed for **JFCM Missions** and church worship teams worldwide.  
+Repository: [kurtjalgalado/Selah](https://github.com/kurtjalgalado/Selah.git)
