@@ -82,14 +82,14 @@ export default function BottomNavBar() {
                             <button
                                 key={item.id}
                                 onClick={() => handleSelect(item)}
-                                className="group flex flex-col items-center justify-center flex-1 py-1 px-1 relative transition-all duration-200 active:scale-95 border-0 outline-none focus:outline-none focus-visible:outline-none focus:ring-0 select-none min-h-[48px]"
+                                className="group flex flex-col items-center justify-center flex-1 py-1 px-1 relative transition-all duration-200 active:scale-95 border-0 outline-none focus-visible:ring-2 focus-visible:ring-accent/50 rounded-xl select-none min-h-[48px]"
                                 style={{ WebkitTapHighlightColor: 'transparent' }}
                                 aria-label={item.label}
                                 aria-current={active ? 'page' : undefined}
                             >
                                 {/* Material 3 Expressive Active Indicator Pill */}
                                 <div 
-                                    className={`relative w-14 h-8 rounded-full flex items-center justify-center transition-all duration-300 ease-out border-0 outline-none select-none ${
+                                    className={`relative w-14 h-8 rounded-full flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu will-change-transform border-0 outline-none select-none ${
                                         active 
                                             ? 'bg-accent text-onaccent shadow-md shadow-accent/25 scale-100' 
                                             : 'bg-transparent text-textmuted hover:text-textprimary hover:bg-surface-hover scale-90'
@@ -97,8 +97,8 @@ export default function BottomNavBar() {
                                 >
                                     <Icon 
                                         weight={active ? 'bold' : 'regular'}
-                                        className={`w-5 h-5 transition-transform duration-200 ${
-                                            active ? 'scale-105' : ''
+                                        className={`w-5 h-5 transition-transform duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                                            active ? 'scale-110' : ''
                                         }`} 
                                     />
                                 </div>

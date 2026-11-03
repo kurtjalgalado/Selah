@@ -16,7 +16,7 @@ export default function RegisterScreen() {
     const [confirmationSent, setConfirmationSent] = useState(false);
 
     // Church tenancy state
-    const [churches, setChurches] = useState([{ id: 'JFCM-Mercedes', name: 'JFCM - Mercedes' }]);
+    const [churches, setChurches] = useState([{ id: 'JFCM-Mercedes', name: 'Jesus First Christian Ministries - Mercedes' }]);
     const [selectedChurchId, setSelectedChurchId] = useState('JFCM-Mercedes');
     const [isCreatingNewChurch, setIsCreatingNewChurch] = useState(false);
     const [newChurchName, setNewChurchName] = useState('');

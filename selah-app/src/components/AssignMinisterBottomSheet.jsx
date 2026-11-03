@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../auth/AuthContext';
 import { scheduleDB } from '../db/dexie';
-import { pushScheduleToSupabase } from '../supabase/sync';
+import { pushScheduleToSupabase, pushNotificationToSupabase } from '../supabase/sync';
+import { scheduleMinisterReminders, dispatchAssignmentEmail } from '../utils/notifications';
 import { InstrumentIcon } from '../utils/instruments';
 import { useBackHandler } from '../utils/backHandler';
 import { haptic } from '../utils/haptics';
@@ -15,7 +16,7 @@ export default function AssignMinisterBottomSheet({
     onClose, 
     onUpdate 
 }) {
-    const { user, churchMembers: cachedMembers, fetchChurchMembers, isSuperuser } = useAuth();
+    const { user, church, churchMembers: cachedMembers, fetchChurchMembers, isSuperuser } = useAuth();
     const [members, setMembers] = useState(cachedMembers || []);
     const [search, setSearch] = useState('');
     const [saving, setSaving] = useState(false);
@@ -92,6 +93,74 @@ export default function AssignMinisterBottomSheet({
             await scheduleDB.update(schedule.id, { assignments: updatedAssignments });
             if (user) {
                 await pushScheduleToSupabase(updatedSchedule, user);
+            }
+
+            // ── Notify assigned minister ──
+            if (selectedMember) {
+                const targetEmail = selectedMember.email;
+                const targetUserId = selectedMember.id;
+                const serviceTitle = schedule.serviceTitle || schedule.service_title || 'Worship Service';
+                const serviceDate = schedule.serviceDate || schedule.service_date || '';
+                const serviceTime = schedule.serviceTime || schedule.service_time || '';
+                const timeFormatted = serviceTime ? ` at ${serviceTime}` : '';
+                const roleName = assignment.role_name || assignment.role || 'Worship Minister';
+                const scheduleNotes = schedule.notes && schedule.notes.trim() ? schedule.notes.trim() : 'None';
+                const now = new Date().toISOString();
+
+                const notifTitle = `Worship Assignment: ${roleName}`;
+                const notifBody = `Service Title: ${serviceTitle}\nDate: ${serviceDate}${timeFormatted}\nAssignment: ${roleName}\nSchedule Notes: ${scheduleNotes}`;
+
+                const isCurrentUser = Boolean(user && targetUserId === user.id);
+
+                if (isCurrentUser || !user) {
+                    await scheduleMinisterReminders({
+                        scheduleId: schedule.id,
+                        serviceTitle,
+                        serviceDate,
+                        serviceTime,
+                        assignment: { ...assignment, role_name: roleName, id: assignment.id || roleName },
+                        notes: scheduleNotes,
+                        churchId: schedule.churchId || 'JFCM-Mercedes',
+                        targetUserId: user?.id || null,
+                        targetEmail
+                    });
+                } else {
+                    const notifRecord = {
+                        id: `assign-${schedule.id}-${assignment.id || roleName}-${Date.now()}`,
+                        userId: targetUserId,
+                        churchId: schedule.churchId || 'JFCM-Mercedes',
+                        title: notifTitle,
+                        body: notifBody,
+                        type: 'assignment',
+                        data: {
+                            scheduleId: schedule.id,
+                            serviceDate,
+                            serviceTime,
+                            roleName,
+                            notes: scheduleNotes,
+                            serviceTitle
+                        },
+                        isRead: false,
+                        createdAt: now
+                    };
+                    if (user) {
+                        await pushNotificationToSupabase(notifRecord, user);
+                    }
+                }
+
+                if (targetEmail) {
+                    await dispatchAssignmentEmail({
+                        toEmail: targetEmail,
+                        recipientName: selectedMember.username || targetEmail.split('@')[0],
+                        serviceTitle,
+                        serviceDate,
+                        serviceTime,
+                        roleName,
+                        notes: scheduleNotes,
+                        targetUserId,
+                        churchName: church?.name || 'Jesus First Christian Ministries'
+                    });
+                }
             }
 
             haptic('success');

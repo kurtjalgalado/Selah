@@ -385,6 +385,40 @@ ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'gener
 ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE;
 
+-- 11b. Persistent Notification Preferences Table
+CREATE TABLE IF NOT EXISTS notification_preferences (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  church_id TEXT REFERENCES churches(id) DEFAULT 'JFCM-Mercedes',
+  in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  email_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  push_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS in_app_enabled BOOLEAN DEFAULT TRUE;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS email_enabled BOOLEAN DEFAULT TRUE;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS push_enabled BOOLEAN DEFAULT TRUE;
+ALTER TABLE setlists ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+
+-- 11c. Minister Reminder Logs (Idempotency and Audit for Scheduled Reminders)
+CREATE TABLE IF NOT EXISTS minister_reminder_logs (
+  id TEXT PRIMARY KEY,
+  schedule_id TEXT,
+  minister_id TEXT,
+  minister_email TEXT,
+  service_date TEXT,
+  service_time TEXT,
+  role TEXT,
+  status TEXT NOT NULL,
+  suppression_reason TEXT,
+  error_message TEXT,
+  notes TEXT,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 12. Non-recursive RBAC Helper Functions
 CREATE OR REPLACE FUNCTION get_auth_user_church_id()
 RETURNS TEXT 
@@ -658,13 +692,46 @@ CREATE POLICY "user_notifications_all" ON user_notifications
     (auth.jwt() ->> 'email') = 'kurt.jalgalado@gmail.com'
   );
 
+-- notification_preferences
+ALTER TABLE notification_preferences ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "notification_preferences_all" ON notification_preferences;
+CREATE POLICY "notification_preferences_all" ON notification_preferences
+  FOR ALL TO anon, authenticated
+  USING (
+    user_id = auth.uid() OR
+    auth.role() = 'service_role' OR
+    get_auth_user_role() IN ('superuser', 'admin')
+  )
+  WITH CHECK (
+    user_id = auth.uid() OR
+    auth.role() = 'service_role' OR
+    get_auth_user_role() IN ('superuser', 'admin')
+  );
+
+-- minister_reminder_logs
+ALTER TABLE minister_reminder_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "minister_reminder_logs_all" ON minister_reminder_logs;
+CREATE POLICY "minister_reminder_logs_all" ON minister_reminder_logs
+  FOR ALL TO anon, authenticated
+  USING (
+    auth.role() = 'service_role' OR
+    get_auth_user_role() IN ('superuser', 'admin', 'worship_leader') OR
+    minister_id = auth.uid()::text
+  )
+  WITH CHECK (
+    auth.role() = 'service_role' OR
+    get_auth_user_role() IN ('superuser', 'admin', 'worship_leader')
+  );
+
 -- 17. Realtime Replica Identity & Publication
-ALTER TABLE churches            REPLICA IDENTITY FULL;
-ALTER TABLE profiles            REPLICA IDENTITY FULL;
-ALTER TABLE songs               REPLICA IDENTITY FULL;
-ALTER TABLE setlists            REPLICA IDENTITY FULL;
-ALTER TABLE minister_schedules  REPLICA IDENTITY FULL;
-ALTER TABLE user_notifications  REPLICA IDENTITY FULL;
+ALTER TABLE churches                 REPLICA IDENTITY FULL;
+ALTER TABLE profiles                 REPLICA IDENTITY FULL;
+ALTER TABLE songs                    REPLICA IDENTITY FULL;
+ALTER TABLE setlists                 REPLICA IDENTITY FULL;
+ALTER TABLE minister_schedules       REPLICA IDENTITY FULL;
+ALTER TABLE user_notifications       REPLICA IDENTITY FULL;
+ALTER TABLE notification_preferences REPLICA IDENTITY FULL;
+ALTER TABLE minister_reminder_logs   REPLICA IDENTITY FULL;
 
 DO $$
 BEGIN
@@ -674,6 +741,8 @@ BEGIN
   BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE setlists; EXCEPTION WHEN duplicate_object THEN END;
   BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE minister_schedules; EXCEPTION WHEN duplicate_object THEN END;
   BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE user_notifications; EXCEPTION WHEN duplicate_object THEN END;
+  BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE notification_preferences; EXCEPTION WHEN duplicate_object THEN END;
+  BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE minister_reminder_logs; EXCEPTION WHEN duplicate_object THEN END;
 END $$;
 
 -- 18. Reload PostgREST schema cache

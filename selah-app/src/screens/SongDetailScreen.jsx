@@ -5,9 +5,9 @@ import { songDB, setlistDB, getSongByIdOrTitle } from '../db/dexie';
 import { useSongCache } from '../context/SongCacheContext';
 import { KEYS, getKeyIndex, semitonesBetween, transposeLyrics, transposeChord, stripChords, formatKey } from '../utils/chords';
 import { parseLyrics, isChordLine, separateChords } from '../utils/lyrics';
-import { CaretLeft as ChevronLeft, Plus, Minus, ListPlus, Trash as Trash2, PencilSimple as Edit3, Clock, Tag, Share, Play, Pause, CaretUp as ChevronUp, SlidersHorizontal, X, Printer, Lock, Shield, CornersOut as Maximize2, CornersIn as Minimize2 } from '@phosphor-icons/react';
+import { CaretLeft as ChevronLeft, Plus, Minus, ListPlus, Playlist, TextAa, ArrowCounterClockwise as RotateCcw, Trash as Trash2, PencilSimple as Edit3, Clock, Tag, Share, Play, Pause, CaretUp as ChevronUp, SlidersHorizontal, X, Printer, Lock, Shield, CornersOut as Maximize2, CornersIn as Minimize2 } from '@phosphor-icons/react';
 import { useAuth } from '../auth/AuthContext';
-import { UIContext } from '../App';
+import { ToastContext } from '../App';
 import { deleteSongFromSupabase, pushSetlistToSupabase } from '../supabase/sync';
 import { useBackHandler } from '../utils/backHandler';
 import EditSongModal from '../components/EditSongModal';
@@ -20,6 +20,7 @@ import { SongDetailSkeleton } from '../components/SkeletonLoader';
 
 export default function SongDetailScreen() {
     const { user, profile, canManageSetlists, isSuperuser, isAdmin } = useAuth();
+    const showToast = useContext(ToastContext);
     const { id } = useParams();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -33,6 +34,7 @@ export default function SongDetailScreen() {
     const [showAddToSetlist, setShowAddToSetlist] = useState(false);
     const [showOptionsModal, setShowOptionsModal] = useState(false);
     const [showPrintModal, setShowPrintModal] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [isStageMode, setIsStageMode] = useState(false);
 
@@ -40,7 +42,9 @@ export default function SongDetailScreen() {
     useBackHandler(showOptionsModal, () => setShowOptionsModal(false));
     useBackHandler(showPrintModal, () => setShowPrintModal(false));
     useBackHandler(showAddToSetlist, () => setShowAddToSetlist(false));
+    useBackHandler(showDeleteConfirm, () => setShowDeleteConfirm(false));
     useBackHandler(isEditing, () => setIsEditing(false));
+    useBackHandler(isStageMode, () => setIsStageMode(false));
 
     const toggleAccidentalMode = () => {
         const next = accidentalMode === 'sharp' ? 'flat' : 'sharp';
@@ -162,20 +166,45 @@ export default function SongDetailScreen() {
     // Parsed sections
     const sections = useMemo(() => parseLyrics(displayLyrics), [displayLyrics]);
 
-    // Auto-scroll smooth interval
+    // Auto-scroll 60fps hardware-accelerated RAF loop with sub-pixel accumulator
     useEffect(() => {
         if (!isAutoScrolling) return;
 
-        const interval = setInterval(() => {
-            window.scrollBy({ top: scrollSpeed, behavior: 'smooth' });
+        let animId;
+        let lastTime = performance.now();
+        let accumulated = 0;
+
+        const loop = (currentTime) => {
+            const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
+            lastTime = currentTime;
+
+            // Natural stage reading speed: 1x = ~26px/s, 2x = ~52px/s, 3x = ~78px/s
+            const pixelsPerSec = scrollSpeed * 26;
+            accumulated += pixelsPerSec * dt;
+
+            if (accumulated >= 1) {
+                const step = Math.floor(accumulated);
+                accumulated -= step;
+                window.scrollBy({ top: step, behavior: 'auto' });
+            }
 
             // Stop at bottom of page
-            if ((window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 15)) {
+            if ((window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 12)) {
                 setIsAutoScrolling(false);
+                return;
             }
-        }, 50);
 
-        return () => clearInterval(interval);
+            animId = requestAnimationFrame(loop);
+        };
+
+        animId = requestAnimationFrame((time) => {
+            lastTime = time;
+            animId = requestAnimationFrame(loop);
+        });
+
+        return () => {
+            if (animId) cancelAnimationFrame(animId);
+        };
     }, [isAutoScrolling, scrollSpeed]);
 
     // Lock body scroll when any modal/sheet is open
@@ -225,11 +254,12 @@ export default function SongDetailScreen() {
     }
 
     const handleDelete = async () => {
-        if (confirm(`Delete "${song.title}"?`)) {
-            await songDB.delete(song.id);
-            await deleteSongFromSupabase(song.id, user);
-            navigate('/library');
-        }
+        haptic('error');
+        await songDB.delete(song.id);
+        await deleteSongFromSupabase(song.id, user);
+        setShowDeleteConfirm(false);
+        showToast?.(`Deleted "${song.title}"`, 'success');
+        navigate('/library');
     };
 
 
@@ -243,9 +273,9 @@ export default function SongDetailScreen() {
         } else {
             try {
                 await navigator.clipboard.writeText(text);
-                alert('Lyrics copied to clipboard (chords excluded)!');
+                showToast?.('Lyrics copied to clipboard!', 'success');
             } catch (e) {
-                // Clipboard fallback
+                showToast?.('Could not copy lyrics to clipboard.', 'error');
             }
         }
     };
@@ -259,20 +289,21 @@ export default function SongDetailScreen() {
             {/* ===== DISTRACTION-FREE STAGE MODE FLOATING HUD PILL ===== */}
             {isStageMode && (
                 <div className="fixed top-3 right-4 z-50 flex items-center gap-2 animate-fadeIn">
-                    <div className="glass bg-elevated/95 border border-accent/40 rounded-full px-3.5 py-1.5 shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs">
+                    <div className="glass bg-elevated/95 border border-accent/40 rounded-full pl-3.5 pr-1 py-1 shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs">
                         <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
                         <span className="font-bold text-textprimary max-w-[160px] truncate">
-                            {song.title} • {currentKey}
+                            {song.title} • <span className="font-mono text-accent">{currentKey}</span>
                         </span>
                         <button
                             onClick={() => {
                                 haptic('light');
                                 setIsStageMode(false);
                             }}
-                            className="w-6 h-6 rounded-full bg-accent/20 hover:bg-accent text-accent hover:text-onaccent flex items-center justify-center transition active:scale-90"
+                            className="w-9 h-9 min-w-[44px] min-h-[44px] rounded-full bg-accent/20 hover:bg-accent text-accent hover:text-onaccent flex items-center justify-center transition active:scale-90"
                             title="Exit Stage Mode (Press F or Tap)"
+                            aria-label="Exit Stage Mode"
                         >
-                            <Minimize2 className="w-3.5 h-3.5" />
+                            <Minimize2 className="w-4 h-4" />
                         </button>
                     </div>
                 </div>
@@ -284,7 +315,7 @@ export default function SongDetailScreen() {
                     <div className="px-3 sm:px-4 pt-6 sm:pt-8 pb-3 flex items-center justify-between gap-2 sm:gap-3">
                         <button
                             onClick={() => window.history.length > 1 ? navigate(-1) : navigate('/library')}
-                            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-secondary hover:bg-surface-hover flex items-center justify-center text-textmuted hover:text-textprimary active:scale-95 transition-all shrink-0 border-0"
+                            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-secondary hover:bg-surface-hover flex items-center justify-center text-textmuted hover:text-textprimary active:scale-95 transition-all shrink-0 border-0"
                             title="Back"
                             aria-label="Back"
                         >
@@ -292,70 +323,99 @@ export default function SongDetailScreen() {
                         </button>
 
                         <div className="flex-1 min-w-0 px-1">
-                            <h1 className="text-sm sm:text-base font-bold truncate leading-tight text-textprimary">{song.title}</h1>
+                            <h1 className="font-serif text-base sm:text-lg font-bold truncate leading-tight text-textprimary">{song.title}</h1>
                             <p className="text-[11px] sm:text-xs text-textmuted truncate mt-0.5">
                                 {song.artist} • <span className="text-accent font-medium">{song.category}</span>
                             </p>
                         </div>
 
-                        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-                            {/* Stage Mode Toggle */}
+                        {/* Unified Obsidian-Glass Action Capsule */}
+                        <div className="action-capsule rounded-2xl p-1 flex items-center gap-0.5 shrink-0">
+                            {/* Stage Fullscreen Mode Toggle */}
                             <button
                                 onClick={() => {
                                     haptic('light');
                                     setIsStageMode(true);
                                 }}
-                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-secondary hover:bg-surface-hover flex items-center justify-center text-textmuted hover:text-accent active:scale-95 transition-all border-0"
-                                title="Enter Full-Screen Stage Mode"
+                                className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center transition-all btn-icon-action border-0 ${
+                                    isStageMode
+                                        ? 'bg-accent/20 text-accent shadow-sm'
+                                        : 'bg-transparent hover:bg-surface-hover text-textprimary hover:text-accent'
+                                }`}
+                                title="Enter Fullscreen Stage Mode"
                                 aria-label="Enter Stage Mode"
                             >
-                                <Maximize2 className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                                <Maximize2 className="w-[19px] h-[19px]" weight="bold" />
                             </button>
 
-                            {/* Edit Song Button (Direct on sm+, in Display Options on mobile) */}
-                            <button
-                                onClick={() => setIsEditing(true)}
-                                className="hidden sm:flex w-10 h-10 rounded-xl bg-accent/15 hover:bg-accent/25 text-accent items-center justify-center active:scale-95 transition-all border-0"
-                                title="Edit Song Lyrics & Chords"
-                                aria-label="Edit Song"
-                            >
-                                <Edit3 className="w-4.5 h-4.5" />
-                            </button>
-
-                            {/* Print Chord Chart Button (Direct on sm+, in Display Options on mobile) */}
-                            <button
-                                onClick={() => setShowPrintModal(true)}
-                                className="hidden sm:flex w-10 h-10 rounded-xl bg-secondary hover:bg-surface-hover items-center justify-center text-textmuted hover:text-accent active:scale-95 transition-all border-0"
-                                title="Print Chord Chart (Single Column)"
-                                aria-label="Print Chord Chart"
-                            >
-                                <Printer className="w-4.5 h-4.5" />
-                            </button>
+                            <div className="h-5 w-px bg-themed shrink-0" />
 
                             {/* Add to Setlist Button */}
                             <button
                                 onClick={() => {
+                                    haptic('light');
                                     if (!user) {
                                         navigate('/login');
                                         return;
                                     }
                                     setShowAddToSetlist(true);
                                 }}
-                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-secondary hover:bg-surface-hover flex items-center justify-center text-textmuted hover:text-accent active:scale-95 transition-all border-0"
+                                className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center transition-all btn-icon-action border-0 ${
+                                    showAddToSetlist
+                                        ? 'bg-accent/20 text-accent shadow-sm'
+                                        : 'bg-transparent hover:bg-surface-hover text-textprimary hover:text-accent'
+                                }`}
                                 title="Add to Setlist"
                                 aria-label="Add to Setlist"
                             >
-                                <ListPlus className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+                                <ListPlus className="w-[20px] h-[20px]" weight="bold" />
                             </button>
 
-                            {/* Display & Song Options */}
+                            <div className="h-5 w-px bg-themed shrink-0" />
+
+                            {/* Display & Stage Options */}
                             <button
-                                onClick={() => setShowOptionsModal(true)}
-                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-secondary hover:bg-surface-hover flex items-center justify-center text-textmuted hover:text-accent active:scale-95 transition-all border-0"
-                                title="Display Options"
+                                onClick={() => {
+                                    haptic('light');
+                                    setShowOptionsModal(true);
+                                }}
+                                className={`relative w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center transition-all btn-icon-action border-0 ${
+                                    showOptionsModal || fontSize !== 16 || transposeAmount !== 0
+                                        ? 'bg-accent/15 text-accent shadow-sm'
+                                        : 'bg-transparent hover:bg-surface-hover text-textprimary hover:text-accent'
+                                }`}
+                                title="Display & Stage Options"
                                 aria-label="Display Options"
                             >
-                                <SlidersHorizontal className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+                                <SlidersHorizontal className="w-[19px] h-[19px]" weight="bold" />
+                                {(fontSize !== 16 || transposeAmount !== 0 || !showChords) && (
+                                    <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]" />
+                                )}
+                            </button>
+
+                            {/* Desktop Quick Actions (Edit & Print) */}
+                            <div className="hidden sm:block h-5 w-px bg-themed shrink-0" />
+                            <button
+                                onClick={() => {
+                                    haptic('light');
+                                    setIsEditing(true);
+                                }}
+                                className="hidden sm:flex w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-transparent hover:bg-surface-hover text-accent items-center justify-center btn-icon-action border-0"
+                                title="Edit Song Lyrics & Chords"
+                                aria-label="Edit Song"
+                            >
+                                <Edit3 className="w-[19px] h-[19px]" weight="bold" />
+                            </button>
+                            <button
+                                onClick={() => {
+                                    haptic('light');
+                                    setShowPrintModal(true);
+                                }}
+                                className="hidden sm:flex w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-transparent hover:bg-surface-hover items-center justify-center text-textmuted hover:text-accent btn-icon-action border-0"
+                                title="Print Chord Chart (Single Column)"
+                                aria-label="Print Chord Chart"
+                            >
+                                <Printer className="w-[19px] h-[19px]" weight="bold" />
                             </button>
                         </div>
                     </div>
@@ -371,9 +431,9 @@ export default function SongDetailScreen() {
                 >
                     {/* Auto-Scroll Speed Selector Floating Pill */}
                     {isAutoScrolling && (
-                        <div className="mb-2 pointer-events-auto bg-elevated/95 dark:bg-[#16161a]/95 backdrop-blur-2xl ring-1 ring-black/5 dark:ring-white/[0.08] shadow-[0_8px_30px_rgba(0,0,0,0.25)] rounded-full px-2.5 py-1 flex items-center gap-1.5 sm:gap-2 animate-slideUp text-xs">
+                        <div className="mb-2 pointer-events-auto bg-elevated/95 backdrop-blur-2xl border border-themed shadow-[0_8px_30px_rgba(0,0,0,0.45)] rounded-full px-3 py-1 flex items-center gap-1.5 sm:gap-2 animate-slideUp text-xs">
                             <span className="text-[10px] font-bold text-textmuted uppercase tracking-wider pl-1">Speed</span>
-                            <div className="inline-flex rounded-full bg-surface-hover/70 dark:bg-white/[0.06] p-0.5">
+                            <div className="inline-flex rounded-full bg-surface-hover/70 p-0.5">
                                 {[1, 2, 3, 4].map(speed => (
                                     <button
                                         key={speed}
@@ -381,7 +441,7 @@ export default function SongDetailScreen() {
                                             haptic('light');
                                             setScrollSpeed(speed);
                                         }}
-                                        className={`w-6 sm:w-7 h-5 sm:h-6 rounded-full text-[10px] sm:text-[11px] font-bold transition-all ${
+                                        className={`min-w-[38px] min-h-[38px] px-2 rounded-full font-mono text-[11px] font-bold transition-all ${
                                             scrollSpeed === speed
                                                 ? 'bg-accent text-onaccent shadow-sm'
                                                 : 'text-textmuted hover:text-textprimary'
@@ -391,64 +451,64 @@ export default function SongDetailScreen() {
                                     </button>
                                 ))}
                             </div>
-                            <div className="h-3.5 w-px bg-themed dark:bg-white/[0.08]" />
+                            <div className="h-4 w-px bg-themed" />
                             <button
                                 onClick={() => {
                                     haptic('light');
                                     scrollToTop();
                                 }}
-                                className="w-5 sm:w-6 h-5 sm:h-6 rounded-full bg-surface-hover/70 dark:bg-white/[0.06] hover:bg-surface-active dark:hover:bg-white/10 flex items-center justify-center text-textmuted hover:text-textprimary transition-colors active:scale-90"
+                                className="min-w-[38px] min-h-[38px] rounded-full bg-surface-hover/70 hover:bg-surface-active flex items-center justify-center text-textmuted hover:text-textprimary transition-colors active:scale-90"
                                 title="Scroll to Top"
                                 aria-label="Scroll to Top"
                             >
-                                <ChevronUp className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                <ChevronUp className="w-4 h-4" />
                             </button>
                         </div>
                     )}
 
                     {/* Apple HIG Floating Stage Pill Dock */}
-                    <div className="pointer-events-auto max-w-full bg-elevated/95 dark:bg-[#16161a]/95 backdrop-blur-2xl backdrop-saturate-150 ring-1 ring-black/5 dark:ring-white/[0.08] shadow-[0_12px_40px_rgba(0,0,0,0.35)] rounded-full p-1 sm:p-1.5 flex items-center justify-between sm:justify-center gap-1 sm:gap-1.5">
+                    <div className="pointer-events-auto max-w-full bg-elevated/95 backdrop-blur-2xl backdrop-saturate-150 border border-themed shadow-[0_12px_40px_rgba(0,0,0,0.55)] rounded-full p-1.5 flex items-center justify-between sm:justify-center gap-1 sm:gap-1.5">
 
                         {/* Segmented Key Transposer Stepper */}
-                        <div className="inline-flex items-center rounded-full bg-surface-hover/70 dark:bg-white/[0.06] p-0.5 shrink-0">
+                        <div className="inline-flex items-center rounded-full bg-surface-hover/70 p-0.5 shrink-0">
                             <button
                                 onClick={() => handleTranspose(-1)}
-                                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-textprimary hover:bg-surface-active dark:hover:bg-white/10 active:bg-accent/20 active:scale-95 transition-all"
+                                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-textprimary hover:bg-surface-active active:bg-accent/20 active:scale-95 transition-all"
                                 title="Transpose Down (Semitone)"
                                 aria-label="Transpose Down"
                             >
-                                <Minus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
+                                <Minus className="w-4 h-4 stroke-[2.5]" />
                             </button>
-                            <div className="min-w-[32px] sm:min-w-[36px] h-8 sm:h-9 px-1.5 sm:px-2 flex items-center justify-center rounded-full bg-accent text-onaccent font-mono font-bold text-xs sm:text-sm shadow-sm select-none">
+                            <div className="min-w-[38px] h-10 px-2 flex items-center justify-center rounded-full bg-accent text-onaccent font-mono font-bold text-xs sm:text-sm shadow-sm select-none">
                                 {currentKey}
                             </div>
                             <button
                                 onClick={() => handleTranspose(1)}
-                                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-textprimary hover:bg-surface-active dark:hover:bg-white/10 active:bg-accent/20 active:scale-95 transition-all"
+                                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-textprimary hover:bg-surface-active active:bg-accent/20 active:scale-95 transition-all"
                                 title="Transpose Up (Semitone)"
                                 aria-label="Transpose Up"
                             >
-                                <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
+                                <Plus className="w-4 h-4 stroke-[2.5]" />
                             </button>
                         </div>
 
                         {/* Flat / Sharp Accidental Toggle */}
                         <button
                             onClick={toggleAccidentalMode}
-                            className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full text-xs font-bold transition-all flex items-center justify-center active:scale-95 shrink-0 ${
+                            className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-full font-mono text-xs font-bold transition-all flex items-center justify-center active:scale-95 shrink-0 ${
                                 accidentalMode === 'sharp'
-                                    ? 'bg-surface-hover/70 dark:bg-white/[0.06] text-accent hover:bg-surface-active dark:hover:bg-white/10'
-                                    : 'bg-surface-hover/70 dark:bg-white/[0.06] text-amber-400 hover:bg-surface-active dark:hover:bg-white/10'
+                                    ? 'bg-surface-hover/70 text-accent hover:bg-surface-active'
+                                    : 'bg-surface-hover/70 text-amber-400 hover:bg-surface-active'
                             }`}
                             title={`Chord Notation: ${accidentalMode === 'sharp' ? 'Sharps (♯)' : 'Flats (♭)'}. Tap to switch.`}
                             aria-label="Toggle Flat or Sharp Notation"
                         >
-                            <span className="text-xs sm:text-sm font-black leading-none">
+                            <span className="text-sm font-black leading-none">
                                 {accidentalMode === 'sharp' ? '♯' : '♭'}
                             </span>
                         </button>
 
-                        <div className="h-4 w-px bg-themed dark:bg-white/[0.08] shrink-0" />
+                        <div className="h-4 w-px bg-themed shrink-0" />
 
                         {/* Chords Toggle Pill */}
                         <button
@@ -456,19 +516,19 @@ export default function SongDetailScreen() {
                                 haptic('light');
                                 setShowChords(!showChords);
                             }}
-                            className={`h-8 sm:h-9 px-2 sm:px-3 rounded-full text-xs font-semibold transition-all flex items-center gap-1 active:scale-95 shrink-0 ${
+                            className={`min-h-[44px] px-3 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 ${
                                 showChords
                                     ? 'bg-accent/15 text-accent'
-                                    : 'bg-surface-hover/70 dark:bg-white/[0.06] text-textmuted hover:text-textprimary hover:bg-surface-active dark:hover:bg-white/10'
+                                    : 'bg-surface-hover/70 text-textmuted hover:text-textprimary hover:bg-surface-active'
                             }`}
                             title={showChords ? 'Hide Chords (Lyrics Only)' : 'Show Chords'}
                             aria-label="Toggle Chords Visibility"
                         >
-                            <Tag className="w-3.5 h-3.5 shrink-0" />
-                            <span className="text-[11px] sm:text-xs font-semibold">Chords</span>
+                            <Tag className="w-4 h-4 shrink-0" />
+                            <span className="text-xs font-semibold">Chords</span>
                         </button>
 
-                        <div className="h-4 w-px bg-themed dark:bg-white/[0.08] shrink-0" />
+                        <div className="h-4 w-px bg-themed shrink-0" />
 
                         {/* Auto-Scroll Action Pill */}
                         <button
@@ -476,20 +536,20 @@ export default function SongDetailScreen() {
                                 haptic('light');
                                 setIsAutoScrolling(!isAutoScrolling);
                             }}
-                            className={`h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 ${
+                            className={`min-h-[44px] px-3.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 ${
                                 isAutoScrolling
                                     ? 'bg-accent text-onaccent shadow-md shadow-accent/25 animate-pulse'
-                                    : 'bg-surface-hover/70 dark:bg-white/[0.06] text-textprimary hover:bg-surface-active dark:hover:bg-white/10'
+                                    : 'bg-surface-hover/70 text-textprimary hover:bg-surface-active'
                             }`}
                             title={isAutoScrolling ? 'Pause Auto-Scroll' : 'Start Auto-Scroll'}
                             aria-label="Toggle Auto-Scroll"
                         >
                             {isAutoScrolling ? (
-                                <Pause className="w-3.5 h-3.5 fill-current shrink-0" />
+                                <Pause className="w-4 h-4 fill-current shrink-0" />
                             ) : (
-                                <Play className="w-3.5 h-3.5 fill-current shrink-0" />
+                                <Play className="w-4 h-4 fill-current shrink-0" />
                             )}
-                            <span className="text-[11px] sm:text-xs font-semibold">
+                            <span className="text-xs font-semibold">
                                 {isAutoScrolling ? 'Pause' : 'Scroll'}
                             </span>
                         </button>
@@ -499,147 +559,358 @@ export default function SongDetailScreen() {
                 document.body
             )}
 
-            {/* ===== DISPLAY OPTIONS MODAL DRAWER ===== */}
-            {showOptionsModal && (
+            {/* ===== FULL STAGE CONTROL CENTER (DISPLAY OPTIONS BOTTOMSHEET — PORTALED) ===== */}
+            {showOptionsModal && typeof document !== 'undefined' && createPortal(
                 <div 
-                    className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
+                    className="fixed inset-0 bg-black/80 backdrop-blur-md z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
                     onClick={() => setShowOptionsModal(false)}
                 >
                     <div 
-                        className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-lg shadow-2xl animate-slideUp max-h-[88vh] sm:max-h-[90vh] flex flex-col pb-[max(1.2rem,env(safe-area-inset-bottom))] sm:pb-0 overflow-hidden"
+                        className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-lg shadow-2xl animate-sheetSpring max-h-[90vh] sm:max-h-[88vh] flex flex-col pb-[max(1.2rem,env(safe-area-inset-bottom))] sm:pb-0 overflow-hidden relative"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="w-12 h-1.5 bg-textmuted/30 rounded-full mx-auto my-3 sm:hidden shrink-0" />
-                        <div className="flex justify-between items-center px-6 py-3.5 border-b border-themed shrink-0">
-                            <h3 className="text-base font-bold flex items-center gap-2 text-textprimary">
-                                <SlidersHorizontal className="w-5 h-5 text-accent" /> Display Options
-                            </h3>
-                            <button onClick={() => setShowOptionsModal(false)} className="text-textmuted hover:text-textprimary p-1">
-                                <X className="w-5 h-5" />
-                            </button>
+                        {/* Top Liturgical Gold Specular Highlight */}
+                        <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-accent/55 to-transparent shrink-0" />
+
+                        {/* Drag Handle */}
+                        <div className="w-11 h-1.5 bg-textmuted/30 rounded-full mx-auto mt-3 mb-1 sm:hidden shrink-0" />
+
+                        {/* Header */}
+                        <div className="flex justify-between items-center px-5 py-3.5 border-b border-themed shrink-0">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shrink-0">
+                                    <SlidersHorizontal size={20} className="w-5 h-5" weight="bold" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-textprimary leading-tight">Stage Display Options</h3>
+                                    <p className="text-[11px] text-textmuted">Typography, notation & live sheet controls</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                {(fontSize !== 16 || transposeAmount !== 0 || !showChords) && (
+                                    <button
+                                        onClick={() => {
+                                            haptic('light');
+                                            setFontSize(16);
+                                            setShowChords(true);
+                                            if (transposeAmount !== 0) handleResetTranspose();
+                                        }}
+                                        className="h-9 px-2.5 rounded-xl bg-secondary border border-themed text-[11px] font-bold text-accent flex items-center gap-1 btn-interact"
+                                        title="Reset Display Defaults"
+                                    >
+                                        <RotateCcw className="w-3.5 h-3.5" weight="bold" />
+                                        <span>Reset</span>
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => {
+                                        haptic('light');
+                                        setShowOptionsModal(false);
+                                    }}
+                                    className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-secondary border border-themed text-textmuted hover:text-textprimary flex items-center justify-center btn-icon-action"
+                                    aria-label="Close display options"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
                         </div>
 
-                        <div className="p-6 space-y-5 overflow-y-auto flex-1 overscroll-contain">
-                            {/* Edit Song Button inside Display Options */}
-                            <button
-                                onClick={() => {
-                                    setShowOptionsModal(false);
-                                    setIsEditing(true);
-                                }}
-                                className="w-full py-3 px-4 rounded-xl bg-accent/15 border border-accent/30 text-accent font-bold text-xs flex items-center justify-center gap-2 active:scale-98"
-                            >
-                                <Edit3 className="w-4 h-4" /> Edit Song Lyrics & Chords
-                            </button>
+                        <div className="p-5 space-y-4 overflow-y-auto flex-1 overscroll-contain">
+                            {/* CARD 1: TYPOGRAPHY & LYRIC SCALE */}
+                            <div className="rounded-2xl bg-secondary/70 border border-themed p-4 space-y-3.5">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-textmuted uppercase tracking-wider flex items-center gap-1.5">
+                                        <TextAa className="w-4 h-4 text-accent" weight="bold" />
+                                        <span>Chord & Lyric Scale</span>
+                                    </span>
+                                    <span key={fontSize} className="px-2.5 py-0.5 rounded-lg bg-accent/15 border border-accent/30 font-mono text-xs font-bold text-accent animate-badgePop">
+                                        {fontSize}px
+                                    </span>
+                                </div>
 
-                            {/* Font Size Adjuster */}
-                            <div>
-                                <label className="block text-xs font-bold text-textmuted uppercase tracking-wider mb-2">
-                                    Font Size ({fontSize}px)
-                                </label>
-                                <div className="flex items-center gap-3 bg-secondary rounded-xl p-2 border border-themed">
+                                {/* Custom Interactive Font Slider + A-/A+ Steppers */}
+                                <div className="flex items-center gap-3">
                                     <button
-                                        onClick={() => setFontSize(s => Math.max(12, s - 2))}
-                                        className="w-11 h-11 rounded-lg bg-surface-hover active:bg-surface-active flex items-center justify-center text-sm font-bold text-textprimary"
+                                        type="button"
+                                        onClick={() => {
+                                            haptic('light');
+                                            setFontSize(s => Math.max(12, s - 2));
+                                        }}
+                                        disabled={fontSize <= 12}
+                                        className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-elevated border border-themed hover:border-accent/40 disabled:opacity-35 flex items-center justify-center font-sans text-xs font-bold text-textprimary btn-icon-action shrink-0"
+                                        aria-label="Decrease Font Size"
                                     >
                                         A−
                                     </button>
-                                    <input
-                                        type="range"
-                                        min="12"
-                                        max="26"
-                                        step="2"
-                                        value={fontSize}
-                                        onChange={(e) => setFontSize(Number(e.target.value))}
-                                        className="flex-1 accent-accent h-2 bg-secondary rounded-lg cursor-pointer"
-                                    />
+
+                                    <div className="flex-1 flex flex-col gap-1.5">
+                                        <input
+                                            type="range"
+                                            min="12"
+                                            max="26"
+                                            step="2"
+                                            value={fontSize}
+                                            onChange={(e) => {
+                                                haptic('light');
+                                                setFontSize(Number(e.target.value));
+                                            }}
+                                            style={{ '--slider-pct': `${((fontSize - 12) / 14) * 100}%` }}
+                                            className="slider-sacred"
+                                            aria-label="Font Size Slider"
+                                        />
+                                        <div className="flex justify-between px-1">
+                                            {[12, 14, 16, 18, 20, 22, 24, 26].map(tick => (
+                                                <span
+                                                    key={tick}
+                                                    className={`w-1 h-1 rounded-full transition-colors ${
+                                                        fontSize >= tick ? 'bg-accent' : 'bg-textmuted/30'
+                                                    }`}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+
                                     <button
-                                        onClick={() => setFontSize(s => Math.min(26, s + 2))}
-                                        className="w-11 h-11 rounded-lg bg-surface-hover active:bg-surface-active flex items-center justify-center text-sm font-bold text-textprimary"
+                                        type="button"
+                                        onClick={() => {
+                                            haptic('light');
+                                            setFontSize(s => Math.min(26, s + 2));
+                                        }}
+                                        disabled={fontSize >= 26}
+                                        className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-elevated border border-themed hover:border-accent/40 disabled:opacity-35 flex items-center justify-center font-sans text-sm font-bold text-textprimary btn-icon-action shrink-0"
+                                        aria-label="Increase Font Size"
                                     >
                                         A+
                                     </button>
                                 </div>
+
+                                {/* Quick Preset Chips */}
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { label: 'Compact', size: 14 },
+                                        { label: 'Stage', size: 18 },
+                                        { label: 'Large', size: 22 },
+                                    ].map(preset => {
+                                        const isPresetActive = fontSize === preset.size;
+                                        return (
+                                            <button
+                                                key={preset.label}
+                                                type="button"
+                                                onClick={() => {
+                                                    haptic('light');
+                                                    setFontSize(preset.size);
+                                                }}
+                                                className={`min-h-[40px] py-1.5 px-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 btn-interact ${
+                                                    isPresetActive
+                                                        ? 'bg-accent text-onaccent border-accent shadow-sm shadow-accent/25'
+                                                        : 'bg-elevated text-textmuted border-themed hover:text-textprimary'
+                                                }`}
+                                            >
+                                                <span>{preset.label}</span>
+                                                <span className={`font-mono text-[10px] ${isPresetActive ? 'text-onaccent/80' : 'text-accent'}`}>
+                                                    {preset.size}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Live 1-Line Chord & Lyric Preview Strip */}
+                                <div className="rounded-xl bg-primary/90 border border-themed px-3.5 py-2.5 overflow-x-auto no-scrollbar">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-textmuted">Live Stage Preview</span>
+                                        <span className="font-mono text-[10px] text-accent">Key of {currentKey}</span>
+                                    </div>
+                                    <ChordLineRenderer
+                                        line={`[${currentKey}]All my life You have been [D]faithful`}
+                                        fontSize={fontSize}
+                                        showChords={showChords}
+                                    />
+                                </div>
                             </div>
 
-                            {/* Chord Accidental Notation (Flats vs Sharps) */}
-                            <div>
-                                <label className="block text-xs font-bold text-textmuted uppercase tracking-wider mb-2">
-                                    Chord Notation (Flats vs Sharps)
+                            {/* CARD 2: CHORD NOTATION & VISIBILITY */}
+                            <div className="rounded-2xl bg-secondary/70 border border-themed p-4 space-y-3">
+                                <label className="block text-xs font-bold text-textmuted uppercase tracking-wider">
+                                    Chord Accidentals & Visibility
                                 </label>
-                                <div className="grid grid-cols-2 gap-2 bg-secondary p-1 rounded-xl border border-themed">
+                                <div className="grid grid-cols-2 gap-2 bg-elevated p-1 rounded-xl border border-themed">
                                     <button
+                                        type="button"
                                         onClick={() => {
+                                            haptic('light');
                                             setAccidentalMode('sharp');
                                             localStorage.setItem('selah_accidental_mode', 'sharp');
                                         }}
-                                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                        className={`min-h-[44px] py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 btn-interact ${
                                             accidentalMode === 'sharp'
                                                 ? 'bg-accent text-onaccent shadow-sm'
                                                 : 'text-textmuted hover:text-textprimary'
                                         }`}
                                     >
-                                        <span className="text-sm font-bold">♯</span> Sharps (C♯, F♯, G♯)
+                                        <span className="font-mono text-sm font-black">♯</span>
+                                        <span>Sharps (C♯, F♯)</span>
                                     </button>
                                     <button
+                                        type="button"
                                         onClick={() => {
+                                            haptic('light');
                                             setAccidentalMode('flat');
                                             localStorage.setItem('selah_accidental_mode', 'flat');
                                         }}
-                                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                        className={`min-h-[44px] py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 btn-interact ${
                                             accidentalMode === 'flat'
                                                 ? 'bg-accent text-onaccent shadow-sm'
                                                 : 'text-textmuted hover:text-textprimary'
                                         }`}
                                     >
-                                        <span className="text-sm font-bold">♭</span> Flats (D♭, G♭, A♭)
+                                        <span className="font-mono text-sm font-black">♭</span>
+                                        <span>Flats (D♭, E♭)</span>
                                     </button>
                                 </div>
+
+                                {transposeAmount !== 0 && (
+                                    <div className="flex items-center justify-between bg-elevated rounded-xl p-3 border border-themed">
+                                        <span className="text-xs text-textmuted">
+                                            Transposed: <span className="font-mono font-bold text-textprimary">{originalKey}</span> → <span className="font-mono font-bold text-accent">{currentKey}</span>
+                                        </span>
+                                        <button
+                                            onClick={() => {
+                                                haptic('light');
+                                                handleResetTranspose();
+                                            }}
+                                            className="min-h-[40px] px-3.5 py-1.5 bg-accent/15 text-accent rounded-xl text-xs font-bold btn-interact flex items-center"
+                                        >
+                                            Reset to <span className="font-mono ml-1">{originalKey}</span>
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
-                            {/* Reset Key Transposition */}
-                            {transposeAmount !== 0 && (
-                                <div className="flex items-center justify-between bg-secondary rounded-xl p-3 border border-themed">
-                                    <span className="text-xs text-textmuted">
-                                        Transposed: {originalKey} → <span className="font-bold text-accent">{currentKey}</span>
-                                    </span>
-                                    <button
-                                        onClick={handleResetTranspose}
-                                        className="min-h-[40px] px-3.5 py-1.5 bg-accent/15 text-accent rounded-xl text-xs font-bold active:bg-accent/30 flex items-center"
-                                    >
-                                        Reset to {originalKey}
-                                    </button>
-                                </div>
-                            )}
+                            {/* CARD 3: STAGE & SHEET BENTO ACTIONS */}
+                            <div className="grid grid-cols-2 gap-2.5">
+                                <button
+                                    onClick={() => {
+                                        haptic('light');
+                                        setShowOptionsModal(false);
+                                        setIsStageMode(true);
+                                    }}
+                                    className="min-h-[52px] p-3 rounded-2xl bg-secondary border border-themed hover:border-accent/40 text-left flex items-center gap-2.5 btn-interact"
+                                >
+                                    <div className="w-9 h-9 rounded-xl bg-accent/15 text-accent flex items-center justify-center shrink-0">
+                                        <Maximize2 size={18} className="w-4 h-4" weight="bold" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-bold text-textprimary truncate">Stage Mode</p>
+                                        <p className="text-[10px] text-textmuted truncate">Fullscreen HUD</p>
+                                    </div>
+                                </button>
 
-                            {/* Print Song Button */}
+                                <button
+                                    onClick={() => {
+                                        haptic('light');
+                                        setShowOptionsModal(false);
+                                        setIsEditing(true);
+                                    }}
+                                    className="min-h-[52px] p-3 rounded-2xl bg-secondary border border-themed hover:border-accent/40 text-left flex items-center gap-2.5 btn-interact"
+                                >
+                                    <div className="w-9 h-9 rounded-xl bg-accent/15 text-accent flex items-center justify-center shrink-0">
+                                        <Edit3 size={18} className="w-4 h-4" weight="bold" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-bold text-textprimary truncate">Edit Chart</p>
+                                        <p className="text-[10px] text-textmuted truncate">Chords & lyrics</p>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        haptic('light');
+                                        setShowOptionsModal(false);
+                                        setShowPrintModal(true);
+                                    }}
+                                    className="min-h-[52px] p-3 rounded-2xl bg-secondary border border-themed hover:border-accent/40 text-left flex items-center gap-2.5 btn-interact"
+                                >
+                                    <div className="w-9 h-9 rounded-xl bg-accent/15 text-accent flex items-center justify-center shrink-0">
+                                        <Printer size={18} className="w-4 h-4" weight="bold" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-bold text-textprimary truncate">Print / PDF</p>
+                                        <p className="text-[10px] text-textmuted truncate">A4 chord sheet</p>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        haptic('light');
+                                        handleShare();
+                                    }}
+                                    className="min-h-[52px] p-3 rounded-2xl bg-secondary border border-themed hover:border-accent/40 text-left flex items-center gap-2.5 btn-interact"
+                                >
+                                    <div className="w-9 h-9 rounded-xl bg-accent/15 text-accent flex items-center justify-center shrink-0">
+                                        <Share size={18} className="w-4 h-4" weight="bold" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-bold text-textprimary truncate">Share Lyrics</p>
+                                        <p className="text-[10px] text-textmuted truncate">Copy or send</p>
+                                    </div>
+                                </button>
+                            </div>
+
+                            {/* Delete Action */}
                             <button
                                 onClick={() => {
+                                    haptic('warning');
                                     setShowOptionsModal(false);
-                                    setShowPrintModal(true);
+                                    setShowDeleteConfirm(true);
                                 }}
-                                className="w-full py-3 px-4 rounded-xl bg-secondary border-0 text-textprimary font-bold text-xs flex items-center justify-center gap-2 active:scale-98 hover:bg-surface-hover"
+                                className="w-full min-h-[44px] py-2.5 px-4 rounded-2xl bg-danger/10 border border-danger/25 text-danger text-xs font-bold flex items-center justify-center gap-2 btn-interact hover:bg-danger/20"
                             >
-                                <Printer className="w-4 h-4 text-accent" /> Print Song Chord Chart (Single Column)
+                                <Trash2 className="w-4 h-4" />
+                                <span>Delete Song from Library</span>
                             </button>
-
-                            {/* Share & Delete Actions */}
-                            <div className="grid grid-cols-2 gap-3 pt-2">
-                                <button
-                                    onClick={handleShare}
-                                    className="py-3 px-4 rounded-xl bg-secondary border-0 text-xs font-bold flex items-center justify-center gap-2 active:scale-98 hover:bg-surface-hover text-textprimary"
-                                >
-                                    <Share className="w-4 h-4 text-accent" /> Share Lyrics
-                                </button>
-                                <button
-                                    onClick={() => { setShowOptionsModal(false); handleDelete(); }}
-                                    className="py-3 px-4 rounded-xl bg-danger/10 text-danger border-0 text-xs font-bold flex items-center justify-center gap-2 active:scale-98 hover:bg-danger/20"
-                                >
-                                    <Trash2 className="w-4 h-4" /> Delete Song
-                                </button>
-                            </div>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
+            )}
+
+            {/* ===== DELETE SONG CONFIRMATION MODAL (PORTALED) ===== */}
+            {showDeleteConfirm && typeof document !== 'undefined' && createPortal(
+                <div
+                    className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fadeIn"
+                    onClick={() => setShowDeleteConfirm(false)}
+                >
+                    <div
+                        className="bg-elevated border border-themed rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4 text-center animate-slideUpModal"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="w-12 h-12 rounded-2xl bg-danger/15 border border-danger/30 text-danger flex items-center justify-center mx-auto">
+                            <Trash2 className="w-6 h-6" />
+                        </div>
+                        <div className="space-y-1">
+                            <h3 className="font-serif text-xl font-bold text-textprimary">Delete Song?</h3>
+                            <p className="text-textmuted text-xs leading-relaxed">
+                                Are you sure you want to delete <strong className="text-textprimary">"{song.title}"</strong> from the library?
+                            </p>
+                        </div>
+                        <div className="flex justify-center gap-3 pt-2">
+                            <button
+                                onClick={() => setShowDeleteConfirm(false)}
+                                className="flex-1 min-h-[44px] py-2.5 px-4 text-xs font-bold text-textmuted hover:text-textprimary bg-secondary border border-themed rounded-2xl btn-interact"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDelete}
+                                className="flex-1 min-h-[44px] py-2.5 px-4 text-xs font-bold text-white bg-danger hover:bg-danger/90 rounded-2xl shadow-lg shadow-danger/25 btn-interact"
+                            >
+                                Delete Song
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
             )}
 
             {/* ===== LYRICS DISPLAY ===== */}

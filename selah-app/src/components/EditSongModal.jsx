@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { KEYS } from '../utils/chords';
 import { songDB } from '../db/dexie';
 import { pushSongToSupabase } from '../supabase/sync';
@@ -57,36 +58,40 @@ export default function EditSongModal({ song, onClose, onSaveSuccess }) {
         }
     };
 
-    return (
+    const modalNode = (
         <div 
-            className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
+            className="fixed inset-0 bg-black/80 backdrop-blur-md z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
             onClick={onClose}
         >
             <div 
-                className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-xl shadow-2xl animate-slideUp max-h-[88vh] sm:max-h-[90vh] flex flex-col pb-[max(1.2rem,env(safe-area-inset-bottom))] sm:pb-0 overflow-hidden"
+                className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-xl shadow-2xl animate-sheetSpring max-h-[88vh] sm:max-h-[90vh] flex flex-col pb-[max(1.2rem,env(safe-area-inset-bottom))] sm:pb-0 overflow-hidden relative"
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="w-12 h-1.5 bg-textmuted/30 rounded-full mx-auto my-3 sm:hidden shrink-0" />
+                <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-accent/55 to-transparent shrink-0" />
+                <div className="w-11 h-1.5 bg-textmuted/30 rounded-full mx-auto mt-3 mb-1 sm:hidden shrink-0" />
                 {/* Modal Header */}
-                <div className="flex justify-between items-center px-6 py-3.5 border-b border-themed shrink-0">
-                    <div>
-                        <h3 className="text-lg font-bold text-accent">Edit Song & Chords</h3>
+                <div className="flex justify-between items-center px-5 py-3.5 border-b border-themed shrink-0">
+                    <div className="min-w-0 pr-3">
+                        <h3 className="text-base font-bold text-accent">Edit Song & Chords</h3>
                         <p className="text-xs text-textmuted truncate">{song?.title}</p>
                     </div>
-                    <button onClick={onClose} className="p-1 rounded-lg text-textmuted hover:text-textprimary hover:bg-surface-hover transition">
+                    <button
+                        onClick={onClose}
+                        className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-secondary border border-themed text-textmuted hover:text-textprimary flex items-center justify-center btn-icon-action shrink-0"
+                    >
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
                 {/* Form */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
+                <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
                     <div>
                         <label className="block text-xs font-medium text-textmuted mb-1.5">Song Title</label>
                         <input
                             type="text"
                             value={form.title}
                             onChange={(e) => setForm({ ...form, title: e.target.value })}
-                            className="w-full bg-secondary border border-themed rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary"
+                            className="w-full bg-secondary border border-themed rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary min-h-[44px]"
                             required
                         />
                     </div>
@@ -97,7 +102,7 @@ export default function EditSongModal({ song, onClose, onSaveSuccess }) {
                             type="text"
                             value={form.artist}
                             onChange={(e) => setForm({ ...form, artist: e.target.value })}
-                            className="w-full bg-secondary border border-themed rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary"
+                            className="w-full bg-secondary border border-themed rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary min-h-[44px]"
                             required
                         />
                     </div>
@@ -108,7 +113,7 @@ export default function EditSongModal({ song, onClose, onSaveSuccess }) {
                             <select
                                 value={form.originalKey}
                                 onChange={(e) => setForm({ ...form, originalKey: e.target.value })}
-                                className="w-full bg-secondary border border-themed rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary"
+                                className="w-full bg-secondary border border-themed rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-accent text-textprimary min-h-[44px]"
                             >
                                 {KEYS.map(k => <option key={k} value={k}>{k}</option>)}
                             </select>
@@ -120,7 +125,7 @@ export default function EditSongModal({ song, onClose, onSaveSuccess }) {
                                 type="number"
                                 value={form.tempo}
                                 onChange={(e) => setForm({ ...form, tempo: e.target.value })}
-                                className="w-full bg-secondary border border-themed rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary"
+                                className="w-full bg-secondary border border-themed rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-accent text-textprimary min-h-[44px]"
                                 required
                             />
                         </div>
@@ -130,7 +135,7 @@ export default function EditSongModal({ song, onClose, onSaveSuccess }) {
                             <select
                                 value={form.category}
                                 onChange={(e) => setForm({ ...form, category: e.target.value })}
-                                className="w-full bg-secondary border border-themed rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary"
+                                className="w-full bg-secondary border border-themed rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent text-textprimary min-h-[44px]"
                             >
                                 {CATEGORY_OPTIONS.map(cat => (
                                     <option key={cat} value={cat}>{cat}</option>
@@ -158,14 +163,14 @@ export default function EditSongModal({ song, onClose, onSaveSuccess }) {
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 py-3 text-sm font-semibold bg-secondary hover:bg-surface-hover active:bg-surface-active transition text-textmuted rounded-xl border-0"
+                            className="flex-1 min-h-[44px] py-3 text-sm font-semibold bg-secondary hover:bg-surface-hover text-textmuted rounded-xl border border-themed btn-interact"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             disabled={saving}
-                            className="flex-1 py-3 text-sm font-bold bg-accent text-onaccent rounded-xl hover:bg-accent/90 active:scale-95 transition shadow-lg shadow-accent/20 flex items-center justify-center gap-2"
+                            className="flex-1 min-h-[44px] py-3 text-sm font-bold bg-accent text-onaccent rounded-xl shadow-lg shadow-accent/20 flex items-center justify-center gap-2 btn-primary-interact"
                         >
                             <Save className="w-4 h-4" />
                             {saving ? 'Saving...' : 'Save Changes'}
@@ -175,4 +180,6 @@ export default function EditSongModal({ song, onClose, onSaveSuccess }) {
             </div>
         </div>
     );
+
+    return typeof document !== 'undefined' ? createPortal(modalNode, document.body) : modalNode;
 }

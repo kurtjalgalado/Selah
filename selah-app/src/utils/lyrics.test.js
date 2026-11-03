@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseLyrics, isChordLine, separateChords, parseChordLineTokens } from './lyrics.js';
+import { parseLyrics, isChordLine, separateChords, parseChordLineTokens, normalizeChordLine } from './lyrics.js';
 
 describe('parseLyrics', () => {
     it('returns empty array on empty input', () => {
@@ -107,5 +107,39 @@ describe('parseChordLineTokens', () => {
             { chord: 'D', text: 'me ' },
             { chord: 'G', text: '' }
         ]);
+    });
+
+    it('normalizes chords inside words so words are never broken with spaces', () => {
+        const tokens = parseChordLineTokens('I will b[F#m]less the Lord at a[G]ll times[A7]');
+        // 'b[F#m]less' should be '[F#m]bless', 'a[G]ll' -> '[G]all', 'times[A7]' -> 'times [A7]'
+        expect(tokens.map(t => t.text).join('')).toBe('I will bless the Lord at all times ');
+        expect(tokens.some(t => t.chord === 'F#m' && t.text.startsWith('bless'))).toBe(true);
+        expect(tokens.some(t => t.chord === 'G' && t.text.startsWith('all'))).toBe(true);
+    });
+
+    it('handles multiple chords embedded in words without splitting syllables', () => {
+        const tokens = parseChordLineTokens('For the [G]Lord is g[D]oo[F#]d');
+        expect(tokens.map(t => t.text).join('')).toBe('For the Lord is good ');
+    });
+});
+
+describe('normalizeChordLine', () => {
+    it('moves embedded chord from inside word to word start', () => {
+        expect(normalizeChordLine('d[F]ebt')).toBe('[F]debt');
+        expect(normalizeChordLine('b[F#m]less')).toBe('[F#m]bless');
+        expect(normalizeChordLine('wa[C]lang')).toBe('[C]walang');
+        expect(normalizeChordLine('luwalha[Em]tiin')).toBe('[Em]luwalhatiin');
+        expect(normalizeChordLine('forgi[G]ven')).toBe('[G]forgiven');
+    });
+
+    it('corrects spacing when chord is between words without space on left', () => {
+        expect(normalizeChordLine('not[C7] owe')).toBe('not [C7]owe');
+        expect(normalizeChordLine('to[Am7] wash')).toBe('to [Am7]wash');
+    });
+
+    it('separates trailing chords from words', () => {
+        expect(normalizeChordLine('hanggan[Am]')).toBe('hanggan [Am]');
+        expect(normalizeChordLine('away[G7]')).toBe('away [G7]');
+        expect(normalizeChordLine('song[A7]')).toBe('song [A7]');
     });
 });

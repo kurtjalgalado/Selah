@@ -17,7 +17,7 @@ export default function TopBarNotificationBell({ className = '' }) {
         <>
             <button
                 onClick={handleToggle}
-                className={`relative w-10 h-10 rounded-full bg-secondary border border-themed hover:border-accent/50 flex items-center justify-center text-textmuted hover:text-textprimary active:scale-95 transition-all shadow-sm ${className} ${isOpen ? 'border-accent text-accent ring-1 ring-accent/30' : ''}`}
+                className={`relative w-11 h-11 min-w-[44px] min-h-[44px] rounded-full bg-secondary border border-themed hover:border-accent/50 flex items-center justify-center text-textmuted hover:text-textprimary active:scale-95 transition-all shadow-sm ${className} ${isOpen ? 'border-accent text-accent ring-1 ring-accent/30' : ''}`}
                 title={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
                 aria-label="Open Notifications"
             >

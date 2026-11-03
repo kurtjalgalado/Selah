@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] — 2026-11-03
+
+### 🚀 Added
+- **Unified Obsidian-Glass Action Capsule**:
+  - Replaced disparate top-right header action buttons in `SongDetailScreen` and `SetlistPlayerScreen` with a sleek, unified `.action-capsule` bar.
+  - Integrated Phosphor icons (`Maximize2`, `ListPlus`, `SlidersHorizontal`, `Edit3`, `Printer`) with active gold glow dots, subtle borders, and smooth spring micro-interactions.
+- **Revamped Stage Display Options Bottomsheet**:
+  - Bespoke Liturgical Gold interactive slider (`.slider-sacred`) featuring dynamic track gradient fill (`--slider-pct`), 8 discrete step ticks (`12px` to `26px`), gold-rimmed thumb scaling, and `A−` / `A+` steppers.
+  - Quick-preset chips (`Compact 14px`, `Stage 18px`, `Large 22px`).
+  - **Live Stage Preview strip** rendering a real-time chord/lyric preview line based on the active key, font size, and chord visibility settings.
+  - Structured Stage Control Bento cards for accidentals (`♯ Sharps` vs `♭ Flats`), stage HUD toggle, single-column print trigger, and lyric sharing.
+- **Enhanced Multi-Song Setlist Picker**:
+  - Transformed the setlist song selector bottomsheet into a multi-select modal with animated Liturgical Gold checkmark badges, live key badges, and a sticky *"Done"* footer bar.
+  - Added quick filter pills (`All`, `Fast`, `Slow`, `Tagalog`, `English`).
+  - Pre-indexed `useMemo` search caching for instantaneous filter responses across 420+ songs without input lag.
+- **Global 60fps Micro-Animations**:
+  - Added hardware-composited list item staggered entrances (`.animate-list-item`), spring bottomsheet appearances (`.animate-sheetSpring`), and tactile press states (`.btn-icon-action`, `.btn-interact`).
+- **Complete React Portal Architecture**:
+  - Portaled all bottomsheets and modals (`showSongPicker`, `showOptionsModal`, `AddSetlistModal`, `EditSetlistModal`, `QuickAddToSetlistModal`, `ScheduleBottomSheet`, `EditSongModal`, `DeleteConfirm`) to `document.body` (`z-[120]`), eliminating CSS containing-block traps.
+
+### 🎨 Changed
+- Standardized all "Add to Setlist" buttons across `LibraryScreen` and `HomeScreen` (Featured Songs, Newly Added, Favorites) with bold Phosphor `<ListPlus />` icons on sculpted 44x44px touch targets.
+- Reorganized `MinisterScheduleCard` to move `Edit Schedule` and `Delete Schedule` inside the expanded card accordion, keeping the collapsed view uncluttered.
+- Updated all CSS entrance keyframes (`tabContentEnter`, `trayPop`, `trayDrop`, `slideLeft`) to end at `transform: none` so `position: fixed` descendants are never trapped inside transformed cards.
+- Expanded automated unit test suite to **131 tests passing** across 10 test suites.
+
+### 🐛 Fixed
+- **Setlist Song Picker Clipping Bug**: Fixed containing-block trap where `showSongPicker` was trapped inside parent `.animate-tabContent` and card container.
+- **Setlist Song Search Lag**: Eliminated repeated on-render `stripChords()` regex execution on all 422 songs by pre-indexing search terms.
+- **Type Error in Song Search**: Handled numeric `tempo` BPM values alongside string values to prevent `(s.tempo || '').toLowerCase is not a function`.
+- **Live Player Settings Crash**: Resolved `formattedActiveKey is not defined` when opening player settings in `SetlistPlayerScreen`.
+- **Red Flash on Tap**: Removed accidental red active highlight triggered during card taps on setlist and schedule cards.
+- **Flat/Minor Key Transposition in Setlists**: Replaced sharp-only array indexing with `getKeyIndex()` from `utils/chords.js` so flat (`Bb`, `Eb`) and minor (`F#m`, `Em`) keys transpose accurately.
+- **Windows Gradle Build Command**: Fixed Windows path resolution for `.\gradlew.bat assembleDebug` in `build_and_deploy.js` and `build_apk.js`.
+
+---
+
 ## [1.0.0] — 2026-10-09
 
 ### 🚀 Added

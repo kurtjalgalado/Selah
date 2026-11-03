@@ -93,60 +93,70 @@ export default function LibraryScreen() {
             });
     }, [setlists, todayStr, user, userChurchId]);
 
-    // Filtered & Sorted songs
-    const filteredSongs = useMemo(() => {
+    // Pre-indexed searchable songs (computes stripChords once when songs change)
+    const indexedSongs = useMemo(() => {
         if (!songs || songs.length === 0) return [];
-
         const uniqueMap = new Map();
         for (const s of songs) {
-            if (!s) continue;
+            if (!s || !s.title || !s.title.trim()) continue;
             const key = `${String(s.id || '').toLowerCase()}-${(s.title || '').toLowerCase().trim()}`;
             if (!uniqueMap.has(key)) {
                 uniqueMap.set(key, s);
             }
         }
-        const uniqueSongs = Array.from(uniqueMap.values());
+        return Array.from(uniqueMap.values()).map(song => {
+            const songTitle = String(song.title || '').toLowerCase();
+            const songArtist = String(song.artist || '').toLowerCase();
+            const songCategory = String(song.category || '').toLowerCase();
+            const songLanguage = String(song.language || '').toLowerCase();
+            const songTags = Array.isArray(song.tags) ? song.tags.map(t => String(t || '').toLowerCase()) : [];
+            const rawLyrics = String(song.lyrics || '');
+            const tempoNum = typeof song.tempo === 'number' ? song.tempo : parseFloat(song.tempo);
+            const tempoStr = typeof song.tempo === 'string' ? song.tempo.toLowerCase() : '';
+
+            return {
+                song,
+                songTitle,
+                songArtist,
+                songLyrics: rawLyrics.toLowerCase(),
+                cleanLyrics: rawLyrics ? stripChords(rawLyrics).toLowerCase() : '',
+                isTagalog: songLanguage.includes('tagalog') || songCategory.includes('tagalog') || songTags.some(t => t.includes('tagalog')),
+                isEnglish: songLanguage.includes('english') || songCategory.includes('english') || songTags.some(t => t.includes('english')),
+                isFast: tempoStr === 'fast' || songCategory.includes('fast') || songTags.some(t => t.includes('fast')) || (!isNaN(tempoNum) && tempoNum >= 100),
+                isSlow: tempoStr === 'slow' || songCategory.includes('slow') || songTags.some(t => t.includes('slow')) || (!isNaN(tempoNum) && tempoNum > 0 && tempoNum < 100),
+            };
+        });
+    }, [songs]);
+
+    // Filtered & Sorted songs
+    const filteredSongs = useMemo(() => {
+        if (indexedSongs.length === 0) return [];
 
         const q = (search || '').toLowerCase().trim();
 
-        const result = uniqueSongs.filter(song => {
-            if (!song || !song.title || !song.title.trim()) return false;
-            const songTitle = (song.title || '').toLowerCase();
-            const songArtist = (song.artist || '').toLowerCase();
-            const songCategory = (song.category || '').toLowerCase();
-            const songLanguage = (song.language || '').toLowerCase();
-            const songTags = (song.tags || []).map(t => String(t || '').toLowerCase());
+        const result = indexedSongs
+            .filter(item => {
+                if (languageFilter === 'Tagalog' && !item.isTagalog) return false;
+                if (languageFilter === 'English' && !item.isEnglish) return false;
+                if (tempoFilter === 'Fast' && !item.isFast) return false;
+                if (tempoFilter === 'Slow' && !item.isSlow) return false;
 
-            const isTagalog = songLanguage.includes('tagalog') || songCategory.includes('tagalog') || songTags.some(t => t.includes('tagalog'));
-            const isEnglish = songLanguage.includes('english') || songCategory.includes('english') || songTags.some(t => t.includes('english'));
-            const isFast = songCategory.includes('fast') || songTags.some(t => t.includes('fast')) || (song.tempo && song.tempo >= 100);
-            const isSlow = songCategory.includes('slow') || songTags.some(t => t.includes('slow')) || (song.tempo && song.tempo < 100);
-
-            const songLyrics = (song.lyrics || '').toLowerCase();
-            const cleanLyrics = song.lyrics ? stripChords(song.lyrics).toLowerCase() : '';
-
-            let matchesLanguage = true;
-            if (languageFilter === 'Tagalog') matchesLanguage = isTagalog;
-            else if (languageFilter === 'English') matchesLanguage = isEnglish;
-
-            let matchesTempo = true;
-            if (tempoFilter === 'Fast') matchesTempo = isFast;
-            else if (tempoFilter === 'Slow') matchesTempo = isSlow;
-
-            const matchesSearch = !q || 
-                songTitle.includes(q) || 
-                songArtist.includes(q) || 
-                songLyrics.includes(q) || 
-                cleanLyrics.includes(q);
-            return matchesLanguage && matchesTempo && matchesSearch;
-        });
+                if (!q) return true;
+                return (
+                    item.songTitle.includes(q) ||
+                    item.songArtist.includes(q) ||
+                    item.cleanLyrics.includes(q) ||
+                    item.songLyrics.includes(q)
+                );
+            })
+            .map(item => item.song);
 
         return result.sort((a, b) => {
             const titleA = (a.title || '').toLowerCase();
             const titleB = (b.title || '').toLowerCase();
             return sortOrder === 'asc' ? titleA.localeCompare(titleB) : titleB.localeCompare(titleA);
         });
-    }, [songs, languageFilter, tempoFilter, search, sortOrder]);
+    }, [indexedSongs, languageFilter, tempoFilter, search, sortOrder]);
 
     // Grouping
     const groupedSections = useMemo(() => {
@@ -436,14 +446,14 @@ export default function LibraryScreen() {
                                 >
                                     {section.title && (
                                         <div 
-                                            className="flex items-center justify-between sticky z-10 bg-primary/95 backdrop-blur-md py-2.5 px-3 border-b border-themed transition-[top] duration-150"
+                                            className="flex items-center justify-between sticky z-10 bg-primary/95 backdrop-blur-md py-2.5 px-3 border-b border-themed"
                                             style={{ top: `${headerHeight}px` }}
                                         >
                                             <span className="text-xs font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
                                                 {section.iconType === 'fast' && <Zap className="w-3.5 h-3.5 text-amber-400" />}
-                                                {section.iconType === 'slow' && <Clock className="w-3.5 h-3.5 text-blue-400" />}
+                                                {section.iconType === 'slow' && <Clock className="w-3.5 h-3.5 text-accent" />}
                                                 {section.iconType === 'other' && <Music className="w-3.5 h-3.5 text-accent" />}
-                                                {groupBy === 'artist' && <Mic className="w-3.5 h-3.5 text-purple-400" />}
+                                                {groupBy === 'artist' && <Mic className="w-3.5 h-3.5 text-accent" />}
                                                 <span>{section.title}</span>
                                             </span>
                                             <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary text-textmuted font-semibold border border-themed">
@@ -493,8 +503,9 @@ export default function LibraryScreen() {
                             haptic('light');
                             setShowAddSongModal(true);
                         }}
-                        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-24 right-5 sm:right-6 w-14 h-14 rounded-full bg-accent text-onaccent flex items-center justify-center shadow-2xl shadow-black/80 glow-accent z-30 min-w-[56px] min-h-[56px] active:scale-95 transition-transform"
+                        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:bottom-8 right-5 md:right-8 w-14 h-14 rounded-full bg-accent text-onaccent flex items-center justify-center shadow-2xl shadow-black/80 glow-accent z-30 min-w-[56px] min-h-[56px] btn-primary-interact"
                         title="Add New Song"
+                        aria-label="Add New Song"
                     >
                         <Plus className="w-6 h-6 stroke-[3]" />
                     </button>,
@@ -539,10 +550,11 @@ function SpotifySongItem({ song, index, onClick, onQuickAdd }) {
         <div
             id={`song-${song.id}`}
             onClick={onClick}
-            className="group py-2.5 px-2.5 rounded-xl flex items-center gap-3 hover:bg-surface-hover active:bg-surface-active transition-colors cursor-pointer select-none"
+            style={{ '--stagger-idx': index - 1 }}
+            className="animate-list-item group py-2.5 px-2.5 rounded-xl flex items-center gap-3 hover:bg-surface-hover card-interact cursor-pointer select-none"
         >
             {/* Plain track number without any box */}
-            <span className="w-5 text-center text-xs font-semibold text-textmuted/60 group-hover:text-accent select-none shrink-0">
+            <span className="w-5 text-center font-mono text-xs font-semibold text-textmuted/60 group-hover:text-accent select-none shrink-0">
                 {index}
             </span>
 
@@ -573,10 +585,11 @@ function SpotifySongItem({ song, index, onClick, onQuickAdd }) {
             {/* Quick Add Action Button */}
             <button
                 onClick={onQuickAdd}
-                className="w-9 h-9 rounded-full text-textmuted hover:text-accent hover:bg-accent/15 flex items-center justify-center active:scale-90 transition-all shrink-0"
+                className="w-10 h-10 min-h-[44px] min-w-[44px] rounded-xl bg-secondary/75 border border-themed text-accent hover:bg-accent/15 hover:border-accent/40 flex items-center justify-center btn-icon-action shrink-0"
                 title="Add to Worship Setlist"
+                aria-label="Add to Worship Setlist"
             >
-                <ListPlus className="w-4.5 h-4.5" />
+                <ListPlus size={20} className="w-5 h-5" weight="bold" />
             </button>
         </div>
     );

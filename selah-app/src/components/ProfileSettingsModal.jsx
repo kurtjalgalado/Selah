@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../supabase/client';
 import { requestNotificationPermission, isNotificationGranted, getNotificationHistory, clearNotificationHistory } from '../utils/notifications';
 import { isHapticEnabled, setHapticEnabled, haptic } from '../utils/haptics';
+import AppleSegmentedControl from './AppleSegmentedControl';
 import { X, User, Lock, Bell, FloppyDisk as Save, Trash as Trash2, DeviceMobile as Smartphone, Moon, Sun, Palette, Check } from '@phosphor-icons/react';
 
 export default function ProfileSettingsModal({ isOpen, onClose }) {
@@ -138,36 +139,22 @@ export default function ProfileSettingsModal({ isOpen, onClose }) {
                     </button>
                 </div>
 
-                {/* Tabs Header */}
-                <div className="flex border-b border-themed bg-secondary/40 shrink-0 overflow-x-auto no-scrollbar">
-                    <button
-                        onClick={() => setActiveTab('appearance')}
-                        className={`flex-1 py-3 px-4 text-xs font-bold border-b-2 flex items-center justify-center gap-2 whitespace-nowrap transition ${
-                            activeTab === 'appearance' ? 'border-accent text-accent bg-surface-hover' : 'border-transparent text-textmuted hover:text-textprimary'
-                        }`}
-                    >
-                        <Palette className="w-4 h-4" /> Appearance
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('credentials')}
-                        className={`flex-1 py-3 px-4 text-xs font-bold border-b-2 flex items-center justify-center gap-2 whitespace-nowrap transition ${
-                            activeTab === 'credentials' ? 'border-accent text-accent bg-surface-hover' : 'border-transparent text-textmuted hover:text-textprimary'
-                        }`}
-                    >
-                        <User className="w-4 h-4" /> Account
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('notifications')}
-                        className={`flex-1 py-3 px-4 text-xs font-bold border-b-2 flex items-center justify-center gap-2 whitespace-nowrap transition ${
-                            activeTab === 'notifications' ? 'border-accent text-accent bg-surface-hover' : 'border-transparent text-textmuted hover:text-textprimary'
-                        }`}
-                    >
-                        <Bell className="w-4 h-4" /> Notifications
-                    </button>
+                {/* Apple HIG Segmented Control Tabs */}
+                <div className="px-5 py-3 border-b border-themed bg-secondary/40 shrink-0">
+                    <AppleSegmentedControl
+                        tabs={[
+                            { id: 'appearance', label: 'Appearance', icon: Palette, accentColor: 'text-accent' },
+                            { id: 'credentials', label: 'Account', icon: User, accentColor: 'text-accent' },
+                            { id: 'notifications', label: 'Notifications', icon: Bell, accentColor: 'text-accent' },
+                        ]}
+                        activeTab={activeTab}
+                        onChange={setActiveTab}
+                    />
                 </div>
 
                 {/* Tab Content Area */}
                 <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                    <div key={activeTab} className="animate-tabContent space-y-4">
                     {/* TAB 1: APPEARANCE / THEME */}
                     {activeTab === 'appearance' && (
                         <div className="space-y-4">
@@ -388,6 +375,7 @@ export default function ProfileSettingsModal({ isOpen, onClose }) {
                             </div>
                         </div>
                     )}
+                    </div>
                 </div>
             </div>
         </div>

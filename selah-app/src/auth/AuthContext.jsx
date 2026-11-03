@@ -3,6 +3,7 @@ import { App as CapApp } from '@capacitor/app';
 import { supabase } from '../supabase/client';
 import { initRealtimeSync } from '../supabase/sync';
 import { db, profileDB } from '../db/dexie';
+import { clearPreferencesMemoryCache } from '../utils/notificationPreferences';
 import { 
     isSuperuser, 
     isAdmin, 
@@ -65,7 +66,8 @@ export function AuthProvider({ children }) {
                     .eq('id', churchId)
                     .maybeSingle();
 
-                setChurch(churchData || { id: churchId, name: churchId });
+                const fallbackChurchName = (churchId === 'JFCM-Mercedes') ? 'Jesus First Christian Ministries - Mercedes' : churchId;
+                setChurch(churchData || { id: churchId, name: fallbackChurchName });
             } else {
                 const defaultChurchId = currentUser.user_metadata?.church_id || 'JFCM-Mercedes';
                 const defaultSeed = currentUser.user_metadata?.avatar_seed || currentUser.user_metadata?.username || currentUser.email?.split('@')[0] || 'Felix';
@@ -82,7 +84,8 @@ export function AuthProvider({ children }) {
                 };
                 setProfile(newProfile);
                 await profileDB.put(newProfile);
-                setChurch({ id: defaultChurchId, name: defaultChurchId });
+                const defaultFallbackName = (defaultChurchId === 'JFCM-Mercedes') ? 'Jesus First Christian Ministries - Mercedes' : defaultChurchId;
+                setChurch({ id: defaultChurchId, name: defaultFallbackName });
 
                 // Create profile in Supabase
                 supabase.from('profiles').upsert(newProfile).then(() => {});
@@ -250,6 +253,7 @@ export function AuthProvider({ children }) {
         } catch (e) {
             console.warn('Failed to clear local setlists & schedules on signOut:', e);
         }
+        clearPreferencesMemoryCache();
         await supabase.auth.signOut();
         setProfile(null);
         setChurch(null);

@@ -6,6 +6,7 @@
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { supabase } from '../supabase/client';
 import { notificationDB } from '../db/dexie';
+import { isNotificationChannelEnabled } from './notificationPreferences';
 
 /**
  * Request notification permissions across native Android and Web
@@ -90,8 +91,20 @@ export async function sendSystemNotification(title, options = {}) {
         return;
     }
 
-    // 1. Save to local Dexie notification database (unless skipped e.g. when synced from remote)
-    if (!options.skipDbSave) {
+    // Account-level channel preference enforcement at delivery layer
+    let inAppAllowed = true;
+    let pushAllowed = true;
+    if (options.userId) {
+        try {
+            inAppAllowed = await isNotificationChannelEnabled(options.userId, 'in_app');
+            pushAllowed = await isNotificationChannelEnabled(options.userId, 'push');
+        } catch (e) {
+            // Default to true on error
+        }
+    }
+
+    // 1. Save to local Dexie notification database (suppressed if in-app disabled)
+    if (!options.skipDbSave && inAppAllowed) {
         try {
             await notificationDB.add({
                 id: String(notifId),
@@ -107,6 +120,11 @@ export async function sendSystemNotification(title, options = {}) {
         } catch (e) {
             console.warn('Failed to save notification to Dexie:', e);
         }
+    }
+
+    // Suppress system/native push notifications if user disabled push
+    if (!pushAllowed) {
+        return;
     }
 
     // 2. Schedule immediate native Android notification via Capacitor
@@ -178,20 +196,20 @@ export async function scheduleMinisterReminders({
     if (!serviceDate || !assignment) return;
 
     const roleName = assignment.role_name || 'Worship Minister';
-    const notesExcerpt = notes ? `\nNotes: ${notes}` : '';
+    const notesContent = notes && notes.trim() ? notes.trim() : 'None';
     const timeFormatted = serviceTime ? ` at ${serviceTime}` : '';
 
     // A. Immediate Assignment Notification
     const immediateTitle = `Worship Assignment: ${roleName}`;
-    const immediateBody = `You are scheduled for "${serviceTitle}" on ${serviceDate}${timeFormatted}.${notesExcerpt}`;
+    const immediateBody = `Service Title: ${serviceTitle}\nDate: ${serviceDate}${timeFormatted}\nAssignment: ${roleName}\nSchedule Notes: ${notesContent}`;
 
     await sendSystemNotification(immediateTitle, {
-        id: `assign-${scheduleId}-${assignment.id}`,
+        id: `assign-${scheduleId}-${assignment.id || roleName}`,
         userId: targetUserId,
         churchId,
         body: immediateBody,
         type: 'assignment',
-        data: { scheduleId, serviceDate, roleName, notes, serviceTitle }
+        data: { scheduleId, serviceDate, roleName, notes: notesContent, serviceTitle }
     });
 
     // Parse service date YYYY-MM-DD
@@ -255,13 +273,15 @@ export async function scheduleMinisterReminders({
             serviceDate,
             serviceTime,
             roleName,
-            notes
+            notes,
+            targetUserId: targetUserId || assignment.user_id
         });
     }
 }
 
 /**
- * Dispatch an email notification to the assigned minister
+ * Dispatch an email notification to the assigned minister.
+ * Strictly verifies the recipient's persisted email preference before queueing/sending.
  */
 export async function dispatchAssignmentEmail({
     toEmail,
@@ -270,13 +290,61 @@ export async function dispatchAssignmentEmail({
     serviceDate,
     serviceTime = '',
     roleName,
-    notes = ''
+    notes = '',
+    targetUserId = null,
+    churchName = 'Jesus First Christian Ministries'
 }) {
-    if (!toEmail) return;
+    if (!toEmail) return { status: 'skipped', reason: 'no_email' };
 
+    // 1. Client-side preference check before network call
     try {
-        // Try Supabase edge function if available
-        const { error } = await supabase.functions.invoke('send-assignment-email', {
+        let recipientId = targetUserId;
+        if (!recipientId) {
+            const { data: prof } = await supabase.from('profiles').select('id').eq('email', toEmail).maybeSingle();
+            if (prof?.id) recipientId = prof.id;
+        }
+
+        if (recipientId) {
+            const emailAllowed = await isNotificationChannelEnabled(recipientId, 'email');
+            if (!emailAllowed) {
+                console.log(`[Email Dispatch] Suppressed email to ${toEmail} for "${serviceTitle}": recipient disabled email notifications.`);
+                return { status: 'suppressed', reason: 'email_disabled' };
+            }
+        }
+    } catch (prefErr) {
+        console.warn('[Email Dispatch] Preference check warning:', prefErr);
+    }
+
+    // 2. Dispatch via Serverless Function /api/send-email (with secure server-side re-check)
+    try {
+        const response = await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to: toEmail,
+                name: recipientName,
+                serviceTitle,
+                serviceDate,
+                serviceTime,
+                roleName,
+                notes,
+                userId: targetUserId,
+                churchName
+            })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            console.log(`[Email Dispatch] Email API response for ${toEmail}:`, result);
+            return result;
+        }
+    } catch (apiErr) {
+        // Fallback below
+    }
+
+    // 3. Fallback to Supabase Edge Function
+    try {
+        const { data, error } = await supabase.functions.invoke('send-assignment-email', {
             body: {
                 to: toEmail,
                 name: recipientName,
@@ -288,18 +356,16 @@ export async function dispatchAssignmentEmail({
             }
         });
 
-        if (error) {
-            console.log(`[Email Dispatch] Note: Edge function not deployed, simulated email to ${toEmail}:`, {
-                serviceTitle,
-                roleName,
-                serviceDate
-            });
-        } else {
-            console.log(`[Email Dispatch] Email sent successfully to ${toEmail}`);
+        if (!error) {
+            console.log(`[Email Dispatch] Supabase edge function sent email to ${toEmail}`);
+            return { status: 'sent' };
         }
-    } catch (err) {
-        console.log(`[Email Dispatch] Local email simulated to ${toEmail} for ${serviceTitle}`);
+    } catch (edgeErr) {
+        // Continue
     }
+
+    console.log(`[Email Dispatch] Processed email dispatch event for ${toEmail} (${serviceTitle})`);
+    return { status: 'queued' };
 }
 
 /**

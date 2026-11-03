@@ -93,21 +93,161 @@ body {
   -webkit-backdrop-filter: blur(12px);
 }
 
-/* Tactile Micro-Animations */
+/* Unified Obsidian-Glass Action Capsule */
+.action-capsule {
+  background: rgba(17, 17, 20, 0.86);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 18px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+}
+
+:root.light .action-capsule {
+  background: rgba(244, 244, 247, 0.92);
+  box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.08), inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+}
+
+/* Tactile Micro-Animations & Responsive Button Feedback */
 .btn-interact {
-  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease, box-shadow 0.18s ease;
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.18s ease, opacity 0.15s ease;
   will-change: transform;
 }
 
 .btn-interact:hover {
-  transform: translateY(-1px) scale(1.01);
+  transform: translateY(-1px);
 }
 
 .btn-interact:active {
-  transform: translateY(0) scale(0.96);
+  transform: translateY(0.5px) scale(0.955);
 }
 
-/* Animations */
+/* Icon Capsule & Action Button Micro-Interaction */
+.btn-icon-action {
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), color 0.16s ease, background-color 0.16s ease, box-shadow 0.18s ease;
+  will-change: transform;
+}
+
+.btn-icon-action svg {
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.btn-icon-action:hover svg {
+  transform: scale(1.08);
+}
+
+.btn-icon-action:active {
+  transform: scale(0.91);
+}
+
+.btn-icon-action:active svg {
+  transform: scale(0.92);
+}
+
+/* Primary High-Contrast Liturgical Gold Action Button */
+.btn-primary-interact {
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1), filter 0.16s ease;
+  will-change: transform, box-shadow;
+}
+
+.btn-primary-interact:hover {
+  transform: translateY(-1.5px) scale(1.01);
+  box-shadow: 0 8px 24px -4px rgba(212, 175, 55, 0.35);
+}
+
+.btn-primary-interact:active {
+  transform: translateY(1px) scale(0.96);
+  box-shadow: 0 2px 8px -1px rgba(212, 175, 55, 0.2);
+}
+
+/* Responsive Card Press State */
+.card-interact {
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.18s ease, background-color 0.16s ease, box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.card-interact:active {
+  transform: scale(0.985);
+}
+
+/* Bespoke Sacred & Tech Interactive Font & Stage Range Slider */
+.slider-sacred {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    var(--accent) var(--slider-pct, 50%),
+    rgba(136, 146, 176, 0.2) var(--slider-pct, 50%),
+    rgba(136, 146, 176, 0.2) 100%
+  );
+  outline: none;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.slider-sacred::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg-elevated);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(212, 175, 55, 0.45);
+  cursor: pointer;
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.slider-sacred::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6), 0 0 0 6px var(--accent-soft);
+}
+
+.slider-sacred:active::-webkit-slider-thumb {
+  transform: scale(1.2);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.7), 0 0 0 9px var(--accent-soft);
+}
+
+.slider-sacred::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg-elevated);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(212, 175, 55, 0.45);
+  cursor: pointer;
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.slider-sacred:active::-moz-range-thumb {
+  transform: scale(1.2);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.7), 0 0 0 9px var(--accent-soft);
+}
+
+/* List Expansion Accordion (CSS Grid 0fr -> 1fr + GPU Opacity) */
+.accordion-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: 
+    grid-template-rows 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: grid-template-rows, opacity;
+}
+
+.accordion-grid.is-expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.accordion-grid-inner {
+  overflow: hidden;
+}
+
+/* Animations — All end with `transform: none` so fixed descendants are never trapped */
 @keyframes pageEnter {
   from {
     opacity: 0;
@@ -120,7 +260,18 @@ body {
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes listStaggerIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
   }
   to {
     opacity: 1;
@@ -139,10 +290,21 @@ body {
   }
 }
 
+@keyframes sheetSpringUp {
+  from {
+    opacity: 0;
+    transform: translateY(36px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @keyframes slideUpModal {
   from {
     opacity: 0;
-    transform: translateY(20px) scale(0.96);
+    transform: translateY(18px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -153,30 +315,55 @@ body {
 @keyframes expandAccordion {
   from {
     opacity: 0;
-    max-height: 0;
     transform: translateY(-6px);
   }
   to {
     opacity: 1;
-    max-height: 2000px;
+    transform: none;
+  }
+}
+
+@keyframes badgePop {
+  0% {
+    transform: scale(0.85);
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  100% {
     transform: none;
   }
 }
 
 .animate-pageEnter {
-  animation: pageEnter 0.22s ease-out;
+  animation: pageEnter 0.2s ease-out;
 }
 
 .animate-fadeIn {
-  animation: fadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Crisp & Stage-Ready 20ms Staggered List Animation (capped at 12 items) */
+.animate-list-item {
+  opacity: 0;
+  animation: listStaggerIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: calc(min(var(--stagger-idx, 0), 12) * 20ms);
 }
 
 .animate-slideUp {
-  animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: sheetSpringUp 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-sheetSpring {
+  animation: sheetSpringUp 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .animate-slideUpModal {
-  animation: slideUpModal 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUpModal 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-badgePop {
+  animation: badgePop 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes trayPop {
@@ -186,12 +373,12 @@ body {
   }
   100% {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: none;
   }
 }
 
 .animate-trayPop {
-  animation: trayPop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: trayPop 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes trayDrop {
@@ -201,7 +388,7 @@ body {
   }
   100% {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: none;
   }
 }
 
@@ -210,27 +397,69 @@ body {
     transform: translateX(100%);
   }
   to {
-    transform: translateX(0);
+    transform: none;
   }
 }
 
 .animate-slideLeft {
-  animation: slideLeft 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideLeft 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .animate-trayDrop {
-  animation: trayDrop 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: trayDrop 0.18s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .animate-expandAccordion {
-  animation: expandAccordion 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: expandAccordion 0.26s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   overflow: hidden;
 }
+
+/* Avatar Chooser Carousel Slide-Down & Smooth Collapse */
+.avatar-chooser-container {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: 
+    grid-template-rows 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: grid-template-rows, opacity, transform;
+  pointer-events: none;
+}
+
+.avatar-chooser-container.is-expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.avatar-chooser-inner {
+  overflow: hidden;
+}
+
+/* Apple HIG Tab Content Smooth Transitions */
+@keyframes tabContentEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-tabContent {
+  animation: tabContentEnter 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 
 /* Glow */
 .glow-accent {
   box-shadow: 0 0 20px var(--accent-soft);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .glow-accent:hover {
@@ -377,5 +606,17 @@ pre, code, .font-mono, .chord-line, .chord-text {
   }
   html.android-print .print-frame-body {
     padding: 0 12mm;
+  }
+}
+
+/* Accessibility: Respect Reduced Motion Preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -60,7 +60,7 @@ export default function ChordLineRenderer({
                         {/* Chord Tier */}
                         <span
                             className={`font-mono font-bold leading-tight select-none tracking-normal ${isPrint ? '' : 'drop-shadow-sm'} ${
-                                hasChord ? 'opacity-100 pr-1.5' : 'opacity-0 pointer-events-none'
+                                hasChord ? 'opacity-100 pr-1.5' : 'opacity-0 pointer-events-none w-0 overflow-hidden'
                             } ${chordColorClass}`}
                             style={{
                                 fontSize: `${chordFontSize}px`,

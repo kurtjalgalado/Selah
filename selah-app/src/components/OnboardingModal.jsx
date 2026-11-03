@@ -49,7 +49,7 @@ export default function OnboardingModal({ isOpen, onComplete }) {
         {
             badge: 'MINISTRY COORDINATION',
             icon: Users,
-            iconBg: 'bg-purple-500/20 text-purple-400 border-purple-500/40',
+            iconBg: 'bg-accent/20 text-accent border-accent/40',
             title: 'Align Your Worship Team & Ministers',
             description: 'Seamlessly schedule worship leaders, vocalists, and band members for upcoming services, and manage song lineups together.',
             features: [
@@ -119,7 +119,7 @@ export default function OnboardingModal({ isOpen, onComplete }) {
 
                 {/* Title & Subtitle */}
                 <div className="space-y-3">
-                    <h1 className="text-2xl sm:text-3xl font-bold text-textprimary leading-tight">
+                    <h1 className="font-serif text-2xl sm:text-3xl font-bold text-textprimary leading-tight">
                         {slide.title}
                     </h1>
                     <p className="text-sm sm:text-base text-textmuted leading-relaxed max-w-md mx-auto">
@@ -140,7 +140,7 @@ export default function OnboardingModal({ isOpen, onComplete }) {
                 </div>
 
                 {/* Pagination Dots */}
-                <div className="flex items-center gap-2 pt-2">
+                <div className="flex items-center gap-1 pt-2">
                     {slides.map((_, idx) => (
                         <button
                             key={idx}
@@ -148,7 +148,7 @@ export default function OnboardingModal({ isOpen, onComplete }) {
                                 haptic('light');
                                 setCurrentSlide(idx);
                             }}
-                            className={`transition-all duration-300 rounded-full min-h-[24px] min-w-[24px] flex items-center justify-center`}
+                            className="transition-all duration-300 rounded-full min-h-[44px] min-w-[44px] flex items-center justify-center"
                             aria-label={`Go to slide ${idx + 1}`}
                         >
                             <span className={`block rounded-full transition-all duration-300 ${

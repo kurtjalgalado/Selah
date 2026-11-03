@@ -142,7 +142,7 @@ export default function AvatarChooserModal({
                         <p className="text-xs font-bold uppercase tracking-wider text-textmuted">
                             Avatar Collection ({AVATAR_PRESETS.length})
                         </p>
-                        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2.5">
+                        <div className="grid grid-cols-4 sm:grid-cols-6 gap-3 py-1">
                             {AVATAR_PRESETS.map((p) => {
                                 const isSelected = selectedSeed.toLowerCase() === p.seed.toLowerCase();
                                 return (
@@ -150,29 +150,32 @@ export default function AvatarChooserModal({
                                         key={p.id}
                                         type="button"
                                         onClick={() => handleSelectPreset(p.seed)}
-                                        className={`relative p-2 rounded-2xl border transition-all flex flex-col items-center gap-1.5 group ${
-                                            isSelected
-                                                ? 'bg-emerald-500/15 border-emerald-500 ring-2 ring-emerald-500/30 shadow-md scale-[1.02]'
-                                                : 'bg-secondary border-themed hover:border-emerald-500/40 hover:bg-secondary/80 active:scale-95'
-                                        }`}
+                                        className="group flex flex-col items-center gap-1.5 focus:outline-none transition-transform"
+                                        title={p.label}
                                     >
-                                        <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full overflow-hidden bg-elevated border border-themed flex items-center justify-center p-1 relative shrink-0">
-                                            <img
-                                                src={p.file}
-                                                alt={p.label}
-                                                width="48"
-                                                height="48"
-                                                loading="lazy"
-                                                className="w-full h-full object-cover"
-                                            />
+                                        <div className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-full aspect-square transition-all duration-200 p-0.5 flex items-center justify-center ${
+                                            isSelected
+                                                ? 'ring-2 sm:ring-[3px] ring-accent ring-offset-2 ring-offset-elevated scale-105 shadow-lg shadow-accent/20'
+                                                : 'ring-1 ring-themed hover:ring-accent/50 hover:scale-105 active:scale-95 bg-primary/40'
+                                        }`}>
+                                            <div className="w-full h-full rounded-full overflow-hidden bg-primary flex items-center justify-center">
+                                                <img
+                                                    src={p.file}
+                                                    alt={p.label}
+                                                    width="64"
+                                                    height="64"
+                                                    loading="lazy"
+                                                    className="w-full h-full object-cover rounded-full select-none pointer-events-none group-hover:scale-110 transition-transform duration-300"
+                                                />
+                                            </div>
                                             {isSelected && (
-                                                <div className="absolute inset-0 bg-emerald-500/35 backdrop-blur-[0.5px] flex items-center justify-center text-white">
-                                                    <Check className="w-4 h-4 stroke-[3]" />
+                                                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-accent text-onaccent flex items-center justify-center shadow-md border-2 border-elevated animate-fadeIn">
+                                                    <Check className="w-2.5 h-2.5 stroke-[3]" />
                                                 </div>
                                             )}
                                         </div>
-                                        <span className={`text-xs font-semibold truncate max-w-full leading-none ${
-                                            isSelected ? 'text-emerald-500 font-bold' : 'text-textprimary'
+                                        <span className={`text-[11px] font-semibold truncate max-w-full leading-none transition-colors ${
+                                            isSelected ? 'text-accent font-bold' : 'text-textmuted group-hover:text-textprimary'
                                         }`}>
                                             {p.label}
                                         </span>

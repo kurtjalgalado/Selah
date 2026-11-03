@@ -1,5 +1,6 @@
 import Dexie from 'dexie';
 import scrapedSongs from './scraped_songs.json';
+import { normalizeLyrics } from '../utils/chords';
 
 // Clean, unified Dexie database schema (v2 without conflicting primary key upgrades)
 export const db = new Dexie('SelahWorshipDB_v2');
@@ -20,6 +21,7 @@ export async function cleanupDuplicateSongs() {
         const allSongs = await db.songs.toArray();
         const seenKeys = new Set();
         const duplicatesToDelete = [];
+        const songsToUpdate = [];
 
         for (const s of allSongs) {
             // Prune invalid or blank songs (empty title or corrupt lineup/service entries without artist or lyrics)
@@ -33,10 +35,21 @@ export async function cleanupDuplicateSongs() {
             } else {
                 seenKeys.add(key);
             }
+
+            // If song lyrics have chords inside words, normalize them
+            if (s.lyrics && /[a-zA-Z]\[[A-G]/.test(s.lyrics)) {
+                const normalized = normalizeLyrics(s.lyrics);
+                if (normalized !== s.lyrics) {
+                    songsToUpdate.push({ ...s, lyrics: normalized });
+                }
+            }
         }
 
         if (duplicatesToDelete.length > 0) {
             await db.songs.bulkDelete(duplicatesToDelete);
+        }
+        if (songsToUpdate.length > 0) {
+            await db.songs.bulkPut(songsToUpdate);
         }
     } catch (e) {
         // Ignored
@@ -109,7 +122,10 @@ export const songDB = {
     update: (id, changes) => {
         const numId = Number(id);
         const targetId = !isNaN(numId) ? numId : String(id);
-        return db.songs.update(targetId, changes);
+        return db.songs.update(targetId, {
+            ...changes,
+            updatedAt: changes.updatedAt || new Date().toISOString()
+        });
     },
     delete: (id) => {
         const numId = Number(id);
@@ -152,15 +168,32 @@ export const setlistDB = {
     getById: (id) => db.setlists.get(String(id)),
     add: async (setlist) => {
         const id = String(setlist.id || crypto.randomUUID());
+        const now = new Date().toISOString();
         const record = {
             ...setlist,
             id,
-            created: setlist.created || new Date().toISOString()
+            created: setlist.created || now,
+            updatedAt: setlist.updatedAt || now
         };
         await db.setlists.put(record);
         return id;
     },
-    update: (id, changes) => db.setlists.update(String(id), changes),
+    put: async (setlist) => {
+        const id = String(setlist.id || crypto.randomUUID());
+        const now = new Date().toISOString();
+        const record = {
+            ...setlist,
+            id,
+            created: setlist.created || now,
+            updatedAt: setlist.updatedAt || now
+        };
+        await db.setlists.put(record);
+        return id;
+    },
+    update: (id, changes) => db.setlists.update(String(id), {
+        ...changes,
+        updatedAt: changes.updatedAt || new Date().toISOString()
+    }),
     delete: (id) => db.setlists.delete(String(id)),
 };
 
@@ -170,19 +203,33 @@ export const scheduleDB = {
     getByChurch: (churchId) => db.schedules.where('churchId').equals(churchId).toArray(),
     add: async (schedule) => {
         const id = String(schedule.id || crypto.randomUUID());
+        const now = new Date().toISOString();
         const record = {
             ...schedule,
             id,
             churchId: schedule.churchId || 'JFCM-Mercedes',
-            created: schedule.created || new Date().toISOString(),
-            updatedAt: schedule.updatedAt || new Date().toISOString()
+            created: schedule.created || now,
+            updatedAt: schedule.updatedAt || now
+        };
+        await db.schedules.put(record);
+        return id;
+    },
+    put: async (schedule) => {
+        const id = String(schedule.id || crypto.randomUUID());
+        const now = new Date().toISOString();
+        const record = {
+            ...schedule,
+            id,
+            churchId: schedule.churchId || 'JFCM-Mercedes',
+            created: schedule.created || now,
+            updatedAt: schedule.updatedAt || now
         };
         await db.schedules.put(record);
         return id;
     },
     update: (id, changes) => db.schedules.update(String(id), {
         ...changes,
-        updatedAt: new Date().toISOString()
+        updatedAt: changes.updatedAt || new Date().toISOString()
     }),
     delete: (id) => db.schedules.delete(String(id)),
 };

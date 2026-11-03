@@ -5,6 +5,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useSongCache } from '../context/SongCacheContext';
 import { supabase } from '../supabase/client';
 import { requestNotificationPermission, isNotificationGranted, getNotificationHistory } from '../utils/notifications';
+import { getNotificationPreferences, updateNotificationPreferences, DEFAULT_NOTIFICATION_PREFERENCES } from '../utils/notificationPreferences';
 import { isHapticEnabled, setHapticEnabled, haptic } from '../utils/haptics';
 import { discreetBackgroundSync } from '../supabase/sync';
 import { getRoleLabel, getRoleBadgeStyle } from '../utils/rbac';
@@ -12,12 +13,13 @@ import {
     User, Moon, Sun, Bell, DeviceMobile as Smartphone, Lock, FloppyDisk as Save, 
     SignOut as LogOut, SignIn as LogIn, CaretRight as ChevronRight, Check, ArrowClockwise as RefreshCw, 
     Shield, Palette, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Church, PencilSimple as Edit3, 
-    Smiley as Smile, Crown, Users, EnvelopeSimple as Mail, Key, At as AtSign, Database, X, Eye, EyeSlash as EyeOff
+    Smiley as Smile, Crown, Users, EnvelopeSimple as Mail, Key, At as AtSign, Database, X, Eye, EyeSlash as EyeOff,
+    Gear, Stack as Layers
 } from '@phosphor-icons/react';
 import PullToRefresh from '../components/PullToRefresh';
 import AppLogo from '../components/AppLogo';
 import UserAvatar from '../components/UserAvatar';
-import AvatarChooserModal from '../components/AvatarChooserModal';
+import AvatarCarouselChooser from '../components/AvatarCarouselChooser';
 import ManageTeamModal from '../components/ManageTeamModal';
 import TopBarNotificationBell from '../components/TopBarNotificationBell';
 
@@ -56,8 +58,8 @@ export default function ProfileScreen() {
                'worshipper';
     }, [user, profile]);
 
-    // Avatar state
-    const [showAvatarModal, setShowAvatarModal] = useState(false);
+    // Avatar state (integrated carousel chooser, hidden by default)
+    const [isAvatarChooserOpen, setIsAvatarChooserOpen] = useState(false);
     const [isSavingAvatar, setIsSavingAvatar] = useState(false);
 
     // Edit Profile Name Modal state
@@ -83,6 +85,10 @@ export default function ProfileScreen() {
 
     // Notifications state
     const [notifGranted, setNotifGranted] = useState(false);
+    const [preferences, setPreferences] = useState(DEFAULT_NOTIFICATION_PREFERENCES);
+    const [loadingPrefs, setLoadingPrefs] = useState(true);
+    const [savingPrefKey, setSavingPrefKey] = useState(null);
+    const [prefError, setPrefError] = useState(null);
 
     // Haptics state
     const [hapticOn, setHapticOn] = useState(isHapticEnabled());
@@ -94,6 +100,44 @@ export default function ProfileScreen() {
     useEffect(() => {
         setNotifGranted(isNotificationGranted());
     }, []);
+
+    // Load account-specific notification preferences from Supabase with Dexie fallback
+    useEffect(() => {
+        let isMounted = true;
+        if (!user?.id) {
+            setLoadingPrefs(false);
+            return;
+        }
+
+        async function loadPrefs() {
+            try {
+                setLoadingPrefs(true);
+                setPrefError(null);
+                const loaded = await getNotificationPreferences(user.id);
+                if (isMounted) {
+                    setPreferences(loaded);
+                }
+            } catch (err) {
+                console.warn('[ProfileScreen] Failed to load preferences:', err);
+            } finally {
+                if (isMounted) setLoadingPrefs(false);
+            }
+        }
+
+        loadPrefs();
+
+        const handleSyncEvent = (e) => {
+            if (e.detail?.userId === String(user.id) && e.detail?.preferences) {
+                setPreferences(e.detail.preferences);
+            }
+        };
+
+        window.addEventListener('selah:preferences-updated', handleSyncEvent);
+        return () => {
+            isMounted = false;
+            window.removeEventListener('selah:preferences-updated', handleSyncEvent);
+        };
+    }, [user?.id]);
 
     useEffect(() => {
         setEditFullName(currentProfileName);
@@ -225,6 +269,36 @@ export default function ProfileScreen() {
         setNotifGranted(result === true);
     };
 
+    const handleTogglePreference = async (channelKey) => {
+        if (!user?.id) return;
+        const prevVal = preferences[channelKey] !== false;
+        const nextVal = !prevVal;
+
+        // If turning on push and system permissions not yet granted, request OS permission
+        if (channelKey === 'push_enabled' && nextVal && !notifGranted) {
+            const granted = await requestNotificationPermission();
+            setNotifGranted(granted);
+        }
+
+        // Optimistic UI update
+        setPreferences(prev => ({ ...prev, [channelKey]: nextVal }));
+        setSavingPrefKey(channelKey);
+        setPrefError(null);
+        haptic('light');
+
+        try {
+            await updateNotificationPreferences(user.id, { [channelKey]: nextVal }, church?.id);
+            haptic('success');
+        } catch (err) {
+            // Revert on error
+            setPreferences(prev => ({ ...prev, [channelKey]: prevVal }));
+            setPrefError(err?.message || 'Failed to save notification preference.');
+            haptic('error');
+        } finally {
+            setSavingPrefKey(null);
+        }
+    };
+
     const handleToggleHaptic = () => {
         const next = !hapticOn;
         setHapticEnabled(next);
@@ -254,546 +328,770 @@ export default function ProfileScreen() {
         navigate('/login');
     };
 
+    // Active Segmented Tab ('profile' | 'settings')
+    const [activeTab, setActiveTab] = useState('profile');
+
     return (
         <PullToRefresh onRefresh={discreetBackgroundSync}>
             <div className="min-h-screen bg-primary pb-32 animate-pageEnter text-textprimary selection:bg-accent/20">
                 {/* =========================================================================
-                    APPLE HIG NAVIGATION BAR
+                    CANONICAL STICKY HEADER (Matches Home, Library & Schedule screens)
                    ========================================================================= */}
                 <header className="glass sticky top-0 z-30 border-b border-themed backdrop-blur-xl">
-                    <div className="px-5 pt-10 pb-3.5 max-w-xl mx-auto flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                            <AppLogo size="sm" showText={false} />
-                            <div>
-                                <h1 className="text-base font-bold text-textprimary tracking-tight leading-none">
-                                    Profile & Settings
-                                </h1>
-                                <p className="text-[10px] text-textmuted mt-0.5 font-medium">
-                                    {church?.name || 'Selah Worship'}
-                                </p>
-                            </div>
-                        </div>
+                    <div className="px-3.5 sm:px-5 pt-10 pb-4 flex items-center justify-between">
+                        <AppLogo size="md" showText={true} />
                         <div className="flex items-center gap-2">
                             <TopBarNotificationBell />
                         </div>
                     </div>
                 </header>
 
-                <main className="px-5 sm:px-8 py-5 space-y-6 max-w-2xl mx-auto">
+                {/* =========================================================================
+                    SEGMENTED PILL SWITCHER (Profile vs Settings)
+                   ========================================================================= */}
+                <div className="px-3.5 sm:px-8 pt-4 pb-1 max-w-xl mx-auto">
+                    <div className="p-1 rounded-2xl bg-secondary/80 border border-themed flex items-center gap-1 backdrop-blur-md shadow-inner">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                haptic('light');
+                                setActiveTab('profile');
+                            }}
+                            className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 min-h-[44px] ${
+                                activeTab === 'profile'
+                                    ? 'bg-elevated text-accent shadow-sm border border-accent/25 ring-1 ring-accent/15'
+                                    : 'text-textmuted hover:text-textprimary hover:bg-surface-hover'
+                            }`}
+                        >
+                            <User size={16} className={activeTab === 'profile' ? 'text-accent' : 'text-textmuted'} />
+                            <span>Profile</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                haptic('light');
+                                setActiveTab('settings');
+                            }}
+                            className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 min-h-[44px] ${
+                                activeTab === 'settings'
+                                    ? 'bg-elevated text-accent shadow-sm border border-accent/25 ring-1 ring-accent/15'
+                                    : 'text-textmuted hover:text-textprimary hover:bg-surface-hover'
+                            }`}
+                        >
+                            <Gear size={16} className={activeTab === 'settings' ? 'text-accent' : 'text-textmuted'} />
+                            <span>Settings</span>
+                        </button>
+                    </div>
+                </div>
+
+                <main className="px-3.5 sm:px-8 py-4 space-y-6 max-w-xl mx-auto">
                     {/* =========================================================================
-                        USER PROFILE HEADER (OPEN DESIGN - SAME AS HOME SCREEN)
+                        TAB 1: PROFILE & MINISTRY IDENTITY
                        ========================================================================= */}
-                    <section className="pt-1 pb-2 space-y-4">
-                        <div className="flex flex-col items-center text-center space-y-3">
-                            {/* Sprouts Avatar */}
-                            <div 
-                                className="relative cursor-pointer group"
-                                onClick={() => {
-                                    haptic('light');
-                                    setShowAvatarModal(true);
-                                }}
-                            >
-                                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full p-1 bg-secondary border border-themed shadow-xl group-hover:scale-105 active:scale-95 transition-all duration-300">
-                                    <div className="w-full h-full rounded-full overflow-hidden bg-primary p-0.5">
-                                        <UserAvatar
-                                            seed={profile?.avatar_seed || user?.user_metadata?.avatar_seed || currentProfileName}
-                                            size="2xl"
-                                            animated={true}
-                                            className="w-full h-full object-cover"
-                                            fallbackInitial={currentProfileName.charAt(0)}
-                                        />
+                    {activeTab === 'profile' && (
+                        <div className="space-y-6 animate-fadeIn">
+                            {/* USER PROFILE HERO PRESENTATION */}
+                            <section className="pt-2 pb-1 space-y-4">
+                                <div className="flex flex-col items-center text-center space-y-3">
+                                    {/* Sprouts Avatar with Golden Aura */}
+                                    <div 
+                                        className="relative cursor-pointer group"
+                                        onClick={() => {
+                                            haptic('light');
+                                            setIsAvatarChooserOpen(prev => !prev);
+                                        }}
+                                    >
+                                        <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full p-1 bg-secondary border border-themed shadow-xl group-hover:scale-105 active:scale-95 transition-all duration-300 ring-2 ring-accent/25">
+                                            <div className="w-full h-full rounded-full overflow-hidden bg-primary p-0.5">
+                                                <UserAvatar
+                                                    seed={profile?.avatar_seed || user?.user_metadata?.avatar_seed || currentProfileName}
+                                                    size="2xl"
+                                                    animated={true}
+                                                    className="w-full h-full object-cover"
+                                                    fallbackInitial={currentProfileName.charAt(0)}
+                                                />
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                haptic('light');
+                                                setIsAvatarChooserOpen(prev => !prev);
+                                            }}
+                                            className={`absolute bottom-0 right-0 w-8 h-8 rounded-full border-2 border-primary flex items-center justify-center shadow-md hover:scale-110 active:scale-90 transition-all ${
+                                                isAvatarChooserOpen ? 'bg-accent text-onaccent ring-2 ring-accent/40' : 'bg-accent text-onaccent'
+                                            }`}
+                                            title={isAvatarChooserOpen ? "Close Avatar Chooser" : "Choose Avatar"}
+                                        >
+                                            <Smile className="w-4 h-4 stroke-[2.5]" />
+                                        </button>
+                                    </div>
+
+                                    {/* Name, Handle & Affiliation */}
+                                    <div className="space-y-1">
+                                        <h1 className="text-2xl sm:text-3xl font-bold text-textprimary tracking-tight">
+                                            {currentProfileName}
+                                        </h1>
+                                        <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-textmuted">
+                                            <span className="text-accent font-mono font-semibold">@{currentUsernameHandle}</span>
+                                            <span>•</span>
+                                            <span className="truncate max-w-[220px]">{user?.email || 'Local Offline'}</span>
+                                        </div>
+
+                                        <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+                                            {/* Role Badge */}
+                                            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-accent/15 text-accent flex items-center gap-1.5 border border-accent/20">
+                                                {isSuperuser ? <Crown size={14} className="text-amber-400" /> : <Shield size={14} className="text-accent" />}
+                                                <span>{getRoleLabel(profile?.role)}</span>
+                                            </span>
+
+                                            {/* Church Badge */}
+                                            <span className="text-xs font-medium px-3 py-1 rounded-full bg-secondary text-textmuted flex items-center gap-1.5 border border-themed">
+                                                <Church size={14} className="text-accent" />
+                                                <span className="truncate max-w-[170px]">{church?.name || (church?.id === 'JFCM-Mercedes' ? 'Jesus First Christian Ministries' : (church?.id || 'Jesus First Christian Ministries'))}</span>
+                                            </span>
+
+                                            {/* Email Verification Chip */}
+                                            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center gap-1 border border-emerald-500/20">
+                                                <CheckCircle2 size={12} />
+                                                <span>{user ? 'Verified' : 'Offline Mode'}</span>
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        haptic('light');
-                                        setShowAvatarModal(true);
+
+                                {/* Quick Action Buttons */}
+                                <div className="flex items-center justify-center gap-2.5 pt-1">
+                                    <button
+                                        onClick={() => {
+                                            haptic('light');
+                                            setEditFullName(currentProfileName);
+                                            setShowEditProfileModal(true);
+                                        }}
+                                        className="btn-interact flex-1 max-w-[180px] py-2.5 px-3.5 rounded-full bg-secondary hover:bg-surface-hover active:bg-surface-active transition-all flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold text-textprimary border border-themed min-h-[44px]"
+                                    >
+                                        <Edit3 size={15} className="text-accent shrink-0" />
+                                        <span>Edit Name</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            haptic('light');
+                                            setIsAvatarChooserOpen(prev => !prev);
+                                        }}
+                                        className={`btn-interact flex-1 max-w-[180px] py-2.5 px-3.5 rounded-full transition-all flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold border min-h-[44px] ${
+                                            isAvatarChooserOpen 
+                                                ? 'bg-accent text-onaccent border-accent shadow-md shadow-accent/20' 
+                                                : 'bg-secondary hover:bg-surface-hover active:bg-surface-active text-accent border-themed'
+                                        }`}
+                                    >
+                                        <Smile size={15} className={`shrink-0 ${isAvatarChooserOpen ? 'text-onaccent' : 'text-accent'}`} />
+                                        <span>{isAvatarChooserOpen ? 'Done' : 'Change Avatar'}</span>
+                                    </button>
+                                </div>
+
+                                {/* Collapsible Sprouts Avatar Chooser */}
+                                <AvatarCarouselChooser
+                                    isOpen={isAvatarChooserOpen}
+                                    onClose={() => setIsAvatarChooserOpen(false)}
+                                    currentSeed={profile?.avatar_seed || user?.user_metadata?.avatar_seed || currentProfileName}
+                                    onSelect={async (seed) => {
+                                        setIsSavingAvatar(true);
+                                        try {
+                                            await updateAvatar(seed);
+                                        } catch (err) {
+                                            console.error('Failed to save avatar:', err);
+                                        } finally {
+                                            setIsSavingAvatar(false);
+                                        }
                                     }}
-                                    className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-accent text-onaccent border-2 border-primary flex items-center justify-center shadow-md hover:scale-110 active:scale-90 transition-all"
-                                    title="Choose Avatar"
-                                >
-                                    <Smile className="w-4 h-4 stroke-[2.5]" />
-                                </button>
-                            </div>
+                                    isSaving={isSavingAvatar}
+                                />
+                            </section>
 
-                            {/* Name, Handle & Affiliation */}
-                            <div className="space-y-1">
-                                <h1 className="text-2xl sm:text-3xl font-bold text-textprimary tracking-tight">
-                                    {currentProfileName}
-                                </h1>
-                                <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-textmuted">
-                                    <span className="text-accent font-semibold">@{currentUsernameHandle}</span>
-                                    <span>•</span>
-                                    <span className="truncate max-w-[220px]">{user?.email || 'Local Offline'}</span>
-                                </div>
-
-                                <div className="pt-1.5 flex flex-wrap items-center justify-center gap-2">
-                                    {/* Role Badge */}
-                                    <span className="text-xs font-semibold px-3 py-1 rounded-full bg-accent/15 text-accent flex items-center gap-1.5">
-                                        {isSuperuser ? <Crown size={14} className="text-amber-400" /> : <Shield size={14} className="text-accent" />}
-                                        <span>{getRoleLabel(profile?.role)}</span>
-                                    </span>
-
-                                    {/* Church Badge */}
-                                    <span className="text-xs font-medium px-3 py-1 rounded-full bg-secondary text-textmuted flex items-center gap-1.5">
-                                        <Church size={14} className="text-accent" />
-                                        <span className="truncate max-w-[160px]">{church?.name || church?.id || 'JFCM'}</span>
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Quick Action Buttons - Borderless Pill Actions */}
-                        <div className="flex items-center justify-center gap-2.5 pt-1">
-                            <button
-                                onClick={() => {
-                                    haptic('light');
-                                    setEditFullName(currentProfileName);
-                                    setShowEditProfileModal(true);
-                                }}
-                                className="flex-1 max-w-[200px] py-2.5 px-4 rounded-full bg-secondary hover:bg-surface-hover active:bg-surface-active transition-all flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold text-textprimary border-0"
-                            >
-                                <Edit3 size={15} className="text-accent shrink-0" />
-                                <span>Edit Display Name</span>
-                            </button>
-                            <button
-                                onClick={() => {
-                                    haptic('light');
-                                    setShowAvatarModal(true);
-                                }}
-                                className="flex-1 max-w-[200px] py-2.5 px-4 rounded-full bg-secondary hover:bg-surface-hover active:bg-surface-active transition-all flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold text-accent border-0"
-                            >
-                                <Smile size={15} className="text-accent shrink-0" />
-                                <span>Change Avatar</span>
-                            </button>
-                        </div>
-                    </section>
-
-                    {/* =========================================================================
-                        SECTION 1: PROFILE DETAILS (Cardless Open List - Same as Home Screen)
-                       ========================================================================= */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between px-1">
-                            <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
-                                <User size={14} className="text-accent" /> Profile Details
-                            </h2>
-                        </div>
-
-                        <div className="space-y-0.5">
-                            {/* Profile Display Name Row */}
-                            <div
-                                onClick={() => {
-                                    haptic('light');
-                                    setEditFullName(currentProfileName);
-                                    setShowEditProfileModal(true);
-                                }}
-                                className="group py-3 px-2 flex items-center justify-between hover:bg-surface-hover active:bg-surface-active rounded-xl transition-all cursor-pointer"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 flex items-center justify-center text-accent shrink-0">
-                                        <User size={18} />
+                            {/* MINISTRY OVERVIEW STATS TRIO */}
+                            <div className="grid grid-cols-3 gap-2.5">
+                                {/* Cached Songs */}
+                                <div className="card-interact p-3 sm:p-3.5 rounded-2xl bg-secondary/80 border border-themed flex flex-col justify-between min-h-[82px] shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                        <div className="w-7 h-7 rounded-lg bg-accent/15 text-accent flex items-center justify-center">
+                                            <Database size={15} />
+                                        </div>
+                                        <span className="text-[10px] uppercase font-bold text-emerald-400">Ready</span>
                                     </div>
-                                    <div>
-                                        <h3 className="font-semibold text-textprimary text-sm sm:text-base leading-snug">Display Name</h3>
-                                        <p className="text-xs text-textmuted mt-0.5">Visible on schedules & setlists</p>
+                                    <div className="mt-2">
+                                        <p className="font-mono text-base sm:text-lg font-bold text-textprimary leading-tight">
+                                            {songs?.length || 0}
+                                        </p>
+                                        <p className="text-[11px] text-textmuted truncate font-medium">Cached Songs</p>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs sm:text-sm font-medium text-textprimary">{currentProfileName}</span>
-                                    <ChevronRight size={16} className="text-textmuted/40 group-hover:text-accent transition-colors" />
-                                </div>
-                            </div>
 
-                            {/* Church Affiliation Row */}
-                            <div className="py-3 px-2 flex items-center justify-between hover:bg-surface-hover rounded-xl transition-all">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 flex items-center justify-center text-accent shrink-0">
-                                        <Church size={18} />
+                                {/* Setlists Count */}
+                                <div className="card-interact p-3 sm:p-3.5 rounded-2xl bg-secondary/80 border border-themed flex flex-col justify-between min-h-[82px] shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                        <div className="w-7 h-7 rounded-lg bg-accent/15 text-accent flex items-center justify-center">
+                                            <Layers size={15} />
+                                        </div>
+                                        <span className="text-[10px] uppercase font-bold text-accent">Active</span>
                                     </div>
-                                    <div>
-                                        <h3 className="font-semibold text-textprimary text-sm sm:text-base leading-snug">Church Affiliation</h3>
-                                        <p className="text-xs text-textmuted mt-0.5">{church?.name || church?.id || 'JFCM-Mercedes'}</p>
+                                    <div className="mt-2">
+                                        <p className="font-mono text-base sm:text-lg font-bold text-textprimary leading-tight">
+                                            {setlists?.length || 0}
+                                        </p>
+                                        <p className="text-[11px] text-textmuted truncate font-medium">Setlists</p>
+                                    </div>
+                                </div>
+
+                                {/* Ministry Tier */}
+                                <div className="card-interact p-3 sm:p-3.5 rounded-2xl bg-secondary/80 border border-themed flex flex-col justify-between min-h-[82px] shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                        <div className="w-7 h-7 rounded-lg bg-accent/15 text-accent flex items-center justify-center">
+                                            {isSuperuser ? <Crown size={15} className="text-amber-400" /> : <Shield size={15} className="text-accent" />}
+                                        </div>
+                                    </div>
+                                    <div className="mt-2">
+                                        <p className="text-xs sm:text-sm font-bold text-textprimary truncate leading-tight">
+                                            {getRoleLabel(profile?.role)}
+                                        </p>
+                                        <p className="text-[11px] text-textmuted truncate font-medium">Ministry Role</p>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Ministry Role Row */}
-                            <div className="py-3 px-2 flex items-center justify-between hover:bg-surface-hover rounded-xl transition-all">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 flex items-center justify-center text-accent shrink-0">
-                                        <Crown size={18} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-semibold text-textprimary text-sm sm:text-base leading-snug">Assigned Ministry Role</h3>
-                                        <p className="text-xs text-textmuted mt-0.5">{getRoleLabel(profile?.role)}</p>
-                                    </div>
+                            {/* GROUPED INSET CARD: PERSONAL MINISTRY DETAILS */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between px-1">
+                                    <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
+                                        <User size={14} className="text-accent" /> Ministry Identity
+                                    </h2>
                                 </div>
-                                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-accent/15 text-accent">
-                                    {profile?.role?.toUpperCase() || 'MEMBER'}
-                                </span>
+
+                                <div className="rounded-2xl bg-secondary/70 border border-themed divide-y divide-border/40 overflow-hidden shadow-sm">
+                                    {/* Display Name Row */}
+                                    <div
+                                        onClick={() => {
+                                            haptic('light');
+                                            setEditFullName(currentProfileName);
+                                            setShowEditProfileModal(true);
+                                        }}
+                                        className="group p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover active:bg-surface-active transition-all cursor-pointer min-h-[52px]"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <User size={18} />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug">Worship Leader Name</h3>
+                                                <p className="text-xs text-textmuted mt-0.5">Visible on schedules & setlists</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs sm:text-sm font-medium text-textprimary">{currentProfileName}</span>
+                                            <ChevronRight size={16} className="text-textmuted group-hover:text-accent transition-colors" />
+                                        </div>
+                                    </div>
+
+                                    {/* Church Affiliation Row */}
+                                    <div className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover transition-all min-h-[52px]">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <Church size={18} />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug">Home Church</h3>
+                                                <p className="text-xs text-textmuted mt-0.5">{church?.name || (church?.id === 'JFCM-Mercedes' ? 'Jesus First Christian Ministries' : (church?.id || 'Jesus First Christian Ministries'))}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Ministry Role Row */}
+                                    <div className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover transition-all min-h-[52px]">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <Crown size={18} />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug">Assigned Privileges</h3>
+                                                <p className="text-xs text-textmuted mt-0.5">{getRoleLabel(profile?.role)} permissions active</p>
+                                            </div>
+                                        </div>
+                                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-accent/15 text-accent border border-accent/20">
+                                            {profile?.role?.toUpperCase() || 'MEMBER'}
+                                        </span>
+                                    </div>
+
+                                    {/* Superuser Team & RBAC Management (Conditional) */}
+                                    {canManageRoles && (
+                                        <div 
+                                            onClick={() => {
+                                                haptic('light');
+                                                setShowManageTeam(true);
+                                            }}
+                                            className="group p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover active:bg-surface-active transition-all cursor-pointer min-h-[52px]"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                    <Users size={18} />
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-semibold text-textprimary text-sm leading-snug">Church Team & RBAC Roles</h3>
+                                                    <p className="text-xs text-textmuted mt-0.5">Manage permissions and elevate ministers</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-semibold text-accent">Manage</span>
+                                                <ChevronRight size={16} className="text-textmuted group-hover:text-accent transition-colors" />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
-                            {/* Sprouts Avatar Persona Row */}
-                            <div
-                                onClick={() => {
-                                    haptic('light');
-                                    setShowAvatarModal(true);
-                                }}
-                                className="group py-3 px-2 flex items-center justify-between hover:bg-surface-hover active:bg-surface-active rounded-xl transition-all cursor-pointer"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 flex items-center justify-center text-accent shrink-0">
-                                        <Smile size={18} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-semibold text-textprimary text-sm sm:text-base leading-snug">Sprouts Avatar</h3>
-                                        <p className="text-xs text-textmuted mt-0.5">Seed: {profile?.avatar_seed || 'Felix'}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-xs sm:text-sm font-semibold text-accent">Customize</span>
-                                    <ChevronRight size={16} className="text-textmuted/40 group-hover:text-accent transition-colors" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* =========================================================================
-                        SECTION 2: ACCOUNT & CREDENTIALS
-                       ========================================================================= */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between px-1">
-                            <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
-                                <Lock size={14} className="text-accent" /> Account & Credentials
-                            </h2>
-                        </div>
-
-                        <div className="space-y-0.5">
-                            {/* Login Username Handle Row */}
-                            <div
-                                onClick={() => {
-                                    if (!user) return;
-                                    haptic('light');
-                                    setEditUsername(currentUsernameHandle);
-                                    setShowEditCredentialsModal(true);
-                                }}
-                                className="group py-3 px-2 flex items-center justify-between hover:bg-surface-hover active:bg-surface-active rounded-xl transition-all cursor-pointer"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 flex items-center justify-center text-accent shrink-0">
-                                        <AtSign size={18} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-semibold text-textprimary text-sm sm:text-base leading-snug">Login Username</h3>
-                                        <p className="text-xs text-textmuted mt-0.5">Used to sign in across devices</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs sm:text-sm font-mono font-medium text-accent">@{currentUsernameHandle}</span>
-                                    <ChevronRight size={16} className="text-textmuted/40 group-hover:text-accent transition-colors" />
-                                </div>
-                            </div>
-
-                            {/* Email Address Row */}
-                            <div className="py-3 px-2 flex items-center justify-between hover:bg-surface-hover rounded-xl transition-all">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 flex items-center justify-center text-accent shrink-0">
-                                        <Mail size={18} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-semibold text-textprimary text-sm sm:text-base leading-snug">Email Address</h3>
-                                        <p className="text-xs text-textmuted mt-0.5">{user?.email || 'Guest Offline'}</p>
-                                    </div>
-                                </div>
-                                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">
-                                    {user ? 'Verified' : 'Offline'}
-                                </span>
-                            </div>
-
-                            {/* Password Row */}
-                            <div
-                                onClick={() => {
-                                    if (!user) return;
-                                    haptic('light');
-                                    setNewPassword('');
-                                    setConfirmPassword('');
-                                    setShowEditCredentialsModal(true);
-                                }}
-                                className="group py-3 px-2 flex items-center justify-between hover:bg-surface-hover active:bg-surface-active rounded-xl transition-all cursor-pointer"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 flex items-center justify-center text-accent shrink-0">
-                                        <Key size={18} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-semibold text-textprimary text-sm sm:text-base leading-snug">Password</h3>
-                                        <p className="text-xs text-textmuted mt-0.5">Protected with encryption</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-xs sm:text-sm font-semibold text-accent">Change Password</span>
-                                    <ChevronRight size={16} className="text-textmuted/40 group-hover:text-accent transition-colors" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* =========================================================================
-                        SECTION 3: SUPERUSER ADMINISTRATION (Conditional)
-                       ========================================================================= */}
-                    {canManageRoles && (
-                        <div className="space-y-2 animate-fadeIn">
-                            <div className="flex items-center justify-between px-1">
-                                <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
-                                    <Shield size={14} className="text-accent" /> Superuser Administration
-                                </h2>
-                            </div>
-
+                            {/* FAST SWITCH PROMPT TO SETTINGS */}
                             <div 
                                 onClick={() => {
                                     haptic('light');
-                                    setShowManageTeam(true);
+                                    setActiveTab('settings');
                                 }}
-                                className="group py-3 px-2 flex items-center justify-between hover:bg-surface-hover active:bg-surface-active rounded-xl transition-all cursor-pointer"
+                                className="card-interact p-3.5 rounded-2xl bg-secondary/50 border border-themed/70 flex items-center justify-between cursor-pointer hover:bg-secondary transition"
                             >
                                 <div className="flex items-center gap-3">
-                                    <div className="w-6 flex items-center justify-center text-accent shrink-0">
-                                        <Users size={18} />
+                                    <div className="w-8 h-8 rounded-xl bg-secondary text-accent flex items-center justify-center border border-themed">
+                                        <Gear size={16} />
                                     </div>
                                     <div>
-                                        <h3 className="font-semibold text-textprimary text-sm sm:text-base leading-snug">Church Team & RBAC Roles</h3>
-                                        <p className="text-xs text-textmuted mt-0.5">Manage permissions and elevate leaders</p>
+                                        <p className="text-xs font-semibold text-textprimary">App & Stage Settings</p>
+                                        <p className="text-[11px] text-textmuted">Audio haptics, dark theme & notifications</p>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs sm:text-sm font-semibold text-accent">Manage</span>
-                                    <ChevronRight size={16} className="text-textmuted/40 group-hover:text-accent transition-colors" />
+                                <div className="flex items-center gap-1 text-xs font-semibold text-accent">
+                                    <span>Configure</span>
+                                    <ChevronRight size={14} />
                                 </div>
                             </div>
                         </div>
                     )}
 
                     {/* =========================================================================
-                        SECTION 4: APPEARANCE & DISPLAY SETTINGS
+                        TAB 2: SETTINGS & SYSTEM CONFIGURATION
                        ========================================================================= */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between px-1">
-                            <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
-                                <Palette size={14} className="text-accent" /> Appearance & Theme
-                            </h2>
-                        </div>
+                    {activeTab === 'settings' && (
+                        <div className="space-y-6 animate-fadeIn">
+                            {/* SECTION 1: APPEARANCE & STAGE THEME */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between px-1">
+                                    <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
+                                        <Palette size={14} className="text-accent" /> Appearance & Theme
+                                    </h2>
+                                </div>
 
-                        <div className="grid grid-cols-2 gap-2.5">
-                            {/* AMOLED Dark Mode Card */}
-                            <button
-                                onClick={() => {
-                                    setTheme('dark');
-                                    haptic('light');
-                                }}
-                                className={`p-3.5 rounded-2xl bg-secondary hover:bg-surface-hover transition-all text-left flex flex-col justify-between min-h-[92px] ${
-                                    theme === 'dark'
-                                        ? 'border border-accent ring-1 ring-accent/30'
-                                        : 'border-0'
-                                }`}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center">
-                                        <Moon size={16} />
-                                    </div>
-                                    {theme === 'dark' && (
-                                        <span className="w-5 h-5 rounded-full bg-accent text-onaccent flex items-center justify-center text-xs shadow-sm">
-                                            <Check size={12} strokeWidth={3} />
-                                        </span>
-                                    )}
-                                </div>
-                                <div>
-                                    <p className="font-semibold text-xs sm:text-sm text-textprimary">AMOLED Dark</p>
-                                    <p className="text-xs text-textmuted mt-0.5">True Black (#000000)</p>
-                                </div>
-                            </button>
-
-                            {/* Apple Light Mode Card */}
-                            <button
-                                onClick={() => {
-                                    setTheme('light');
-                                    haptic('light');
-                                }}
-                                className={`p-3.5 rounded-2xl bg-secondary hover:bg-surface-hover transition-all text-left flex flex-col justify-between min-h-[92px] ${
-                                    theme === 'light'
-                                        ? 'border border-accent ring-1 ring-accent/30'
-                                        : 'border-0'
-                                }`}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center">
-                                        <Sun size={16} />
-                                    </div>
-                                    {theme === 'light' && (
-                                        <span className="w-5 h-5 rounded-full bg-accent text-onaccent flex items-center justify-center text-xs shadow-sm">
-                                            <Check size={12} strokeWidth={3} />
-                                        </span>
-                                    )}
-                                </div>
-                                <div>
-                                    <p className="font-semibold text-xs sm:text-sm text-textprimary">Light Mode</p>
-                                    <p className="text-xs text-textmuted mt-0.5">Pure White (#FFFFFF)</p>
-                                </div>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* =========================================================================
-                        SECTION 5: SYSTEM PREFERENCES
-                       ========================================================================= */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between px-1">
-                            <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
-                                <Smartphone size={14} className="text-accent" /> System Preferences
-                            </h2>
-                        </div>
-
-                        <div className="space-y-0.5">
-                            {/* Push Notifications Row */}
-                            <div className="py-3 px-2 flex items-center justify-between hover:bg-surface-hover rounded-xl transition-all">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 flex items-center justify-center text-accent shrink-0">
-                                        <Bell size={18} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-semibold text-textprimary text-sm sm:text-base leading-snug">Setlist & Schedule Alerts</h3>
-                                        <p className="text-xs text-textmuted mt-0.5">
-                                             {notifGranted ? 'Notifications active' : 'Get alerts when team schedules change'}
-                                        </p>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={handleEnableNotifications}
-                                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition active:scale-95 ${
-                                        notifGranted
-                                            ? 'bg-success/15 text-success'
-                                            : 'bg-accent text-onaccent hover:bg-accent/90'
-                                    }`}
-                                >
-                                    {notifGranted ? 'Enabled' : 'Enable'}
-                                </button>
-                            </div>
-
-                            {/* Apple Cupertino Haptic Switch Row */}
-                            <div className="py-3 px-2 flex items-center justify-between hover:bg-surface-hover rounded-xl transition-all">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 flex items-center justify-center text-accent shrink-0">
-                                        <Smartphone size={18} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-semibold text-textprimary text-sm sm:text-base leading-snug">Haptic Vibration Feedback</h3>
-                                        <p className="text-xs text-textmuted mt-0.5">
-                                            {hapticOn ? 'Tactile vibration on tap & scroll' : 'Vibrations disabled'}
-                                        </p>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={handleToggleHaptic}
-                                    role="switch"
-                                    aria-checked={hapticOn}
-                                    className={`relative w-12 h-7 rounded-full transition-colors duration-200 focus:outline-none ${
-                                        hapticOn ? 'bg-emerald-500' : 'bg-surface-active'
-                                    }`}
-                                >
-                                    <span
-                                        className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200 ${
-                                            hapticOn ? 'translate-x-5' : 'translate-x-0'
+                                <div className="grid grid-cols-2 gap-2.5">
+                                    {/* AMOLED Dark Mode Card */}
+                                    <button
+                                        onClick={() => {
+                                            setTheme('dark');
+                                            haptic('light');
+                                        }}
+                                        className={`btn-interact p-3.5 rounded-2xl bg-secondary/80 hover:bg-surface-hover transition-all text-left flex flex-col justify-between min-h-[92px] ${
+                                            theme === 'dark'
+                                                ? 'border border-accent ring-1 ring-accent/30 shadow-md'
+                                                : 'border border-themed'
                                         }`}
-                                    />
-                                </button>
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center">
+                                                <Moon size={16} />
+                                            </div>
+                                            {theme === 'dark' && (
+                                                <span className="w-5 h-5 rounded-full bg-accent text-onaccent flex items-center justify-center text-xs shadow-sm">
+                                                    <Check size={12} strokeWidth={3} />
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-xs sm:text-sm text-textprimary">AMOLED Dark</p>
+                                            <p className="text-[11px] text-textmuted mt-0.5">True Pitch Black (#000000)</p>
+                                        </div>
+                                    </button>
+
+                                    {/* Apple Light Mode Card */}
+                                    <button
+                                        onClick={() => {
+                                            setTheme('light');
+                                            haptic('light');
+                                        }}
+                                        className={`btn-interact p-3.5 rounded-2xl bg-secondary/80 hover:bg-surface-hover transition-all text-left flex flex-col justify-between min-h-[92px] ${
+                                            theme === 'light'
+                                                ? 'border border-accent ring-1 ring-accent/30 shadow-md'
+                                                : 'border border-themed'
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center">
+                                                <Sun size={16} />
+                                            </div>
+                                            {theme === 'light' && (
+                                                <span className="w-5 h-5 rounded-full bg-accent text-onaccent flex items-center justify-center text-xs shadow-sm">
+                                                    <Check size={12} strokeWidth={3} />
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-xs sm:text-sm text-textprimary">Light Mode</p>
+                                            <p className="text-[11px] text-textmuted mt-0.5">Clean White (#FFFFFF)</p>
+                                        </div>
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    </div>
 
-                    {/* =========================================================================
-                        SECTION 6: DATA & OFFLINE STORAGE
-                       ========================================================================= */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between px-1">
-                            <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
-                                <Database size={14} className="text-accent" /> Data & Offline Storage
-                            </h2>
-                        </div>
+                            {/* SECTION 2: NOTIFICATIONS & COMMUNICATION */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between px-1">
+                                    <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
+                                        <Bell size={14} className="text-accent" /> Notification Channels
+                                    </h2>
+                                    {savingPrefKey && (
+                                        <span className="text-[11px] font-semibold text-accent animate-pulse flex items-center gap-1">
+                                            <RefreshCw size={11} className="animate-spin" /> Saving...
+                                        </span>
+                                    )}
+                                </div>
 
-                        <div className="space-y-0.5">
-                            {/* Cloud Sync Row */}
-                            <div className="py-3 px-2 flex items-center justify-between hover:bg-surface-hover rounded-xl transition-all">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 flex items-center justify-center text-accent shrink-0">
-                                        <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
+                                {prefError && (
+                                    <div className="p-2.5 rounded-xl bg-danger/10 border border-danger/25 text-danger text-xs flex items-center gap-2">
+                                        <AlertCircle size={14} className="shrink-0" />
+                                        <span className="flex-1">{prefError}</span>
                                     </div>
-                                    <div>
-                                        <h3 className="font-semibold text-textprimary text-sm sm:text-base leading-snug">Cloud Synchronization</h3>
-                                        <p className="text-xs text-textmuted mt-0.5">
-                                            {syncSuccessToast ? 'Sync complete!' : 'Sync offline Dexie DB with cloud'}
-                                        </p>
+                                )}
+
+                                <div className="rounded-2xl bg-secondary/70 border border-themed divide-y divide-border/40 overflow-hidden shadow-sm">
+                                    {/* In-app Notifications Toggle Row */}
+                                    <div className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover transition-all min-h-[52px]">
+                                        <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <Bell size={18} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug truncate">
+                                                    In-app notifications
+                                                </h3>
+                                                <p className="text-xs text-textmuted mt-0.5 leading-snug">
+                                                    Receive updates & ministry assignments inside the app.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleTogglePreference('in_app_enabled')}
+                                            role="switch"
+                                            aria-checked={preferences.in_app_enabled !== false}
+                                            aria-label="Toggle in-app notifications"
+                                            disabled={loadingPrefs}
+                                            className={`relative w-12 h-7 rounded-full transition-colors duration-200 focus:outline-none shrink-0 min-h-[28px] ${
+                                                preferences.in_app_enabled !== false ? 'bg-emerald-500' : 'bg-surface-active'
+                                            } ${loadingPrefs ? 'opacity-50' : ''}`}
+                                        >
+                                            <span
+                                                className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                                                    preferences.in_app_enabled !== false ? 'translate-x-5' : 'translate-x-0'
+                                                }`}
+                                            />
+                                        </button>
+                                    </div>
+
+                                    {/* Email Notifications Toggle Row */}
+                                    <div className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover transition-all min-h-[52px]">
+                                        <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <Mail size={18} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug truncate">
+                                                    Email notifications
+                                                </h3>
+                                                <p className="text-xs text-textmuted mt-0.5 leading-snug">
+                                                    Receive assignments and service reminders by email.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleTogglePreference('email_enabled')}
+                                            role="switch"
+                                            aria-checked={preferences.email_enabled !== false}
+                                            aria-label="Toggle email notifications"
+                                            disabled={loadingPrefs}
+                                            className={`relative w-12 h-7 rounded-full transition-colors duration-200 focus:outline-none shrink-0 min-h-[28px] ${
+                                                preferences.email_enabled !== false ? 'bg-emerald-500' : 'bg-surface-active'
+                                            } ${loadingPrefs ? 'opacity-50' : ''}`}
+                                        >
+                                            <span
+                                                className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                                                    preferences.email_enabled !== false ? 'translate-x-5' : 'translate-x-0'
+                                                }`}
+                                            />
+                                        </button>
+                                    </div>
+
+                                    {/* Push Notifications Toggle Row */}
+                                    <div className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover transition-all min-h-[52px]">
+                                        <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <Smartphone size={18} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug truncate">
+                                                    Push notifications
+                                                </h3>
+                                                <p className="text-xs text-textmuted mt-0.5 leading-snug">
+                                                    Receive alerts on mobile devices even when closed.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleTogglePreference('push_enabled')}
+                                            role="switch"
+                                            aria-checked={preferences.push_enabled !== false}
+                                            aria-label="Toggle push notifications"
+                                            disabled={loadingPrefs}
+                                            className={`relative w-12 h-7 rounded-full transition-colors duration-200 focus:outline-none shrink-0 min-h-[28px] ${
+                                                preferences.push_enabled !== false ? 'bg-emerald-500' : 'bg-surface-active'
+                                            } ${loadingPrefs ? 'opacity-50' : ''}`}
+                                        >
+                                            <span
+                                                className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                                                    preferences.push_enabled !== false ? 'translate-x-5' : 'translate-x-0'
+                                                }`}
+                                            />
+                                        </button>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={handleManualSync}
-                                    disabled={isSyncing}
-                                    className="px-3.5 py-1.5 rounded-xl bg-secondary hover:bg-surface-hover text-xs font-semibold text-textprimary flex items-center gap-1.5 active:scale-95 transition border-0"
-                                >
-                                    <RefreshCw size={14} className={`text-accent ${isSyncing ? 'animate-spin' : ''}`} />
-                                    <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
-                                </button>
                             </div>
 
-                            {/* Offline Song Cache Row */}
-                            <div className="py-3 px-2 flex items-center justify-between hover:bg-surface-hover rounded-xl transition-all">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 flex items-center justify-center text-accent shrink-0">
-                                        <Database size={18} />
+                            {/* SECTION 3: SYSTEM & DEVICE ERGONOMICS */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between px-1">
+                                    <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
+                                        <Smartphone size={14} className="text-accent" /> System & Stage Ergonomics
+                                    </h2>
+                                </div>
+
+                                <div className="rounded-2xl bg-secondary/70 border border-themed divide-y divide-border/40 overflow-hidden shadow-sm">
+                                    {/* Device OS Permission Row */}
+                                    <div className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover transition-all min-h-[52px]">
+                                        <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <Bell size={18} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug">Device OS Permission</h3>
+                                                <p className="text-xs text-textmuted mt-0.5">
+                                                    {notifGranted ? 'Operating system permission granted' : 'Operating system permission required for alerts'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={handleEnableNotifications}
+                                            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition active:scale-95 shrink-0 min-h-[36px] ${
+                                                notifGranted
+                                                    ? 'bg-success/15 text-success border border-success/30'
+                                                    : 'bg-accent text-onaccent hover:bg-accent/90 shadow-sm'
+                                            }`}
+                                        >
+                                            {notifGranted ? 'Allowed' : 'Allow'}
+                                        </button>
                                     </div>
-                                    <div>
-                                        <h3 className="font-semibold text-textprimary text-sm sm:text-base leading-snug">Offline Song Cache</h3>
-                                        <p className="text-xs text-textmuted mt-0.5">IndexedDB storage active</p>
+
+                                    {/* Apple Cupertino Haptic Switch Row */}
+                                    <div className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover transition-all min-h-[52px]">
+                                        <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <Smartphone size={18} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug">Haptic Vibration Feedback</h3>
+                                                <p className="text-xs text-textmuted mt-0.5">
+                                                    {hapticOn ? 'Tactile vibration on tap & scroll' : 'Vibrations disabled'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={handleToggleHaptic}
+                                            role="switch"
+                                            aria-checked={hapticOn}
+                                            aria-label="Toggle haptic vibration"
+                                            className={`relative w-12 h-7 rounded-full transition-colors duration-200 focus:outline-none shrink-0 min-h-[28px] ${
+                                                hapticOn ? 'bg-emerald-500' : 'bg-surface-active'
+                                            }`}
+                                        >
+                                            <span
+                                                className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                                                    hapticOn ? 'translate-x-5' : 'translate-x-0'
+                                                }`}
+                                            />
+                                        </button>
                                     </div>
                                 </div>
-                                <span className="text-xs sm:text-sm font-medium text-textprimary">
-                                    {songs?.length || 0} songs • {setlists?.length || 0} setlists
-                                </span>
+                            </div>
+
+                            {/* SECTION 4: DATA & CLOUD SYNCHRONIZATION */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between px-1">
+                                    <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
+                                        <Database size={14} className="text-accent" /> Data & Offline Storage
+                                    </h2>
+                                </div>
+
+                                <div className="rounded-2xl bg-secondary/70 border border-themed divide-y divide-border/40 overflow-hidden shadow-sm">
+                                    {/* Cloud Sync Row */}
+                                    <div className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover transition-all min-h-[52px]">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug">Cloud Synchronization</h3>
+                                                <p className="text-xs text-textmuted mt-0.5">
+                                                    {syncSuccessToast ? 'Sync complete!' : 'Sync offline Dexie DB with cloud'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={handleManualSync}
+                                            disabled={isSyncing}
+                                            className="btn-interact px-3.5 py-1.5 rounded-xl bg-secondary hover:bg-surface-hover text-xs font-semibold text-textprimary flex items-center gap-1.5 border border-themed min-h-[36px]"
+                                        >
+                                            <RefreshCw size={14} className={`text-accent ${isSyncing ? 'animate-spin' : ''}`} />
+                                            <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+                                        </button>
+                                    </div>
+
+                                    {/* Offline Song Cache Row */}
+                                    <div className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover transition-all min-h-[52px]">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <Database size={18} />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug">Offline Song Cache</h3>
+                                                <p className="text-xs text-textmuted mt-0.5">IndexedDB storage active</p>
+                                            </div>
+                                        </div>
+                                        <span className="text-xs sm:text-sm font-mono font-medium text-accent">
+                                            {songs?.length || 0} songs • {setlists?.length || 0} setlists
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* SECTION 5: ACCOUNT CREDENTIALS & SECURITY */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between px-1">
+                                    <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
+                                        <Lock size={14} className="text-accent" /> Account Security & Credentials
+                                    </h2>
+                                </div>
+
+                                <div className="rounded-2xl bg-secondary/70 border border-themed divide-y divide-border/40 overflow-hidden shadow-sm">
+                                    {/* Login Username Handle Row */}
+                                    <div
+                                        onClick={() => {
+                                            if (!user) return;
+                                            haptic('light');
+                                            setEditUsername(currentUsernameHandle);
+                                            setShowEditCredentialsModal(true);
+                                        }}
+                                        className="group p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover active:bg-surface-active transition-all cursor-pointer min-h-[52px]"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <AtSign size={18} />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug">Sign-in Handle</h3>
+                                                <p className="text-xs text-textmuted mt-0.5">Used to log into Selah across devices</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs sm:text-sm font-mono font-medium text-accent">@{currentUsernameHandle}</span>
+                                            <ChevronRight size={16} className="text-textmuted group-hover:text-accent transition-colors" />
+                                        </div>
+                                    </div>
+
+                                    {/* Email Address Row */}
+                                    <div className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover transition-all min-h-[52px]">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <Mail size={18} />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug">Registered Email</h3>
+                                                <p className="text-xs text-textmuted mt-0.5">{user?.email || 'Guest Offline'}</p>
+                                            </div>
+                                        </div>
+                                        <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                            {user ? 'Verified' : 'Offline'}
+                                        </span>
+                                    </div>
+
+                                    {/* Password Row */}
+                                    <div
+                                        onClick={() => {
+                                            if (!user) return;
+                                            haptic('light');
+                                            setNewPassword('');
+                                            setConfirmPassword('');
+                                            setShowEditCredentialsModal(true);
+                                        }}
+                                        className="group p-3.5 sm:p-4 flex items-center justify-between hover:bg-surface-hover active:bg-surface-active transition-all cursor-pointer min-h-[52px]"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                                                <Key size={18} />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-semibold text-textprimary text-sm leading-snug">Account Password</h3>
+                                                <p className="text-xs text-textmuted mt-0.5">Encrypted with Supabase Auth</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-xs sm:text-sm font-semibold text-accent">Change Password</span>
+                                            <ChevronRight size={16} className="text-textmuted group-hover:text-accent transition-colors" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* SECTION 6: SESSION & SIGN OUT */}
+                            <div className="pt-2 space-y-3">
+                                {user ? (
+                                    <button
+                                        onClick={() => {
+                                            haptic('light');
+                                            setShowSignOutConfirm(true);
+                                        }}
+                                        className="btn-interact w-full py-3.5 px-4 rounded-2xl bg-danger/10 hover:bg-danger/20 text-danger text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 border border-danger/20 min-h-[48px]"
+                                    >
+                                        <LogOut size={18} />
+                                        <span>Sign Out ({currentProfileName})</span>
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => navigate('/login')}
+                                        className="btn-primary-interact w-full py-3.5 px-4 rounded-2xl bg-accent text-onaccent text-xs sm:text-sm font-bold shadow-md shadow-accent/20 transition flex items-center justify-center gap-2 border-0 min-h-[48px]"
+                                    >
+                                        <LogIn size={18} />
+                                        <span>Sign In / Create Team Account</span>
+                                    </button>
+                                )}
+
+                                <div className="text-center pt-2">
+                                    <p className="text-xs text-textmuted font-medium">
+                                        Selah Worship Planner • Version 1.0.0
+                                    </p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-
-                    {/* =========================================================================
-                        SECTION 7: SESSION & SIGN OUT
-                       ========================================================================= */}
-                    <div className="pt-2 space-y-3">
-                        {user ? (
-                            <button
-                                onClick={() => {
-                                    haptic('light');
-                                    setShowSignOutConfirm(true);
-                                }}
-                                className="w-full py-3.5 px-4 rounded-2xl bg-danger/10 hover:bg-danger/20 text-danger text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 active:scale-[0.98] border-0"
-                            >
-                                <LogOut size={18} />
-                                <span>Sign Out ({currentProfileName})</span>
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => navigate('/login')}
-                                className="w-full py-3.5 px-4 rounded-2xl bg-accent text-onaccent text-xs sm:text-sm font-bold shadow-md shadow-accent/20 active:scale-[0.98] transition flex items-center justify-center gap-2 border-0"
-                            >
-                                <LogIn size={18} />
-                                <span>Sign In / Create Team Account</span>
-                            </button>
-                        )}
-
-                        <div className="text-center pt-1">
-                            <p className="text-xs text-textmuted font-medium">
-                                Selah Worship Planner • Version 1.0.0
-                            </p>
-                        </div>
-                    </div>
+                    )}
                 </main>
 
                 {/* =========================================================================
@@ -1022,25 +1320,7 @@ export default function ProfileScreen() {
                     </div>
                 )}
 
-                {/* =========================================================================
-                    MODAL: SPROUTS AVATAR CHOOSER
-                   ========================================================================= */}
-                <AvatarChooserModal
-                    isOpen={showAvatarModal}
-                    onClose={() => setShowAvatarModal(false)}
-                    currentSeed={profile?.avatar_seed || user?.user_metadata?.avatar_seed || currentProfileName}
-                    onSave={async (seed) => {
-                        setIsSavingAvatar(true);
-                        try {
-                            await updateAvatar(seed);
-                        } catch (err) {
-                            console.error('Failed to save avatar:', err);
-                        } finally {
-                            setIsSavingAvatar(false);
-                        }
-                    }}
-                    isSaving={isSavingAvatar}
-                />
+
 
                 {/* =========================================================================
                     MODAL: MANAGE TEAM RBAC ROLES (Superuser)

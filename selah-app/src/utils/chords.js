@@ -145,13 +145,76 @@ export function semitonesBetween(fromKey, toKey) {
 }
 
 /**
+ * Normalize chords placed inside words (e.g. from column-aligned chord scraper)
+ * Moves chords to word boundaries so syllables and words never split apart or have artificial spaces.
+ */
+export function normalizeChordLine(line) {
+    if (!line || !line.includes('[')) return line;
+
+    // Do not alter section headers like [Chorus] or [Verse 1]
+    if (/^\s*\[(verse|chorus|bridge|intro|outro|instrumental|pre-?chorus|tag)/i.test(line)) {
+        return line;
+    }
+
+    // Pure chord lines (e.g. "[G]  [D]  [Em]  [C]") must preserve original chord progression spacing
+    if (/^(\[[^\]]+\]\s*)+$/.test(line.trim())) {
+        return line;
+    }
+
+    // Pass 1: Chord between two words with space after chord:
+    // e.g. 'not[C7] owe' -> 'not [C7]owe'
+    // e.g. 'to[Am7] wash' -> 'to [Am7]wash'
+    let res = line.replace(/([a-zA-Z0-9’']+)\[([A-G][#b]?[^\]]*)\]\s+([a-zA-Z0-9’']+)/g, '$1 [$2]$3');
+
+    // Pass 2: Trailing chord right after word characters before whitespace, punctuation, or end of line:
+    // e.g. 'away[G7]' -> 'away [G7]'
+    // e.g. 'hanggan[Am]' -> 'hanggan [Am]'
+    // e.g. 'so[D]ng[A7]' -> 'so[D]ng [A7]'
+    res = res.replace(/([a-zA-Z0-9’']+)(\[[A-G][#b]?[^\]]*\])(?=[,\.!\?;:\s]|$)/g, '$1 $2');
+
+    // Pass 3: Chord embedded inside a word (letters before AND letters after chord):
+    // e.g. 'b[F#m]less' -> '[F#m]bless'
+    // e.g. 'd[F]ebt' -> '[F]debt'
+    // e.g. 'wa[C]lang' -> '[C]walang'
+    // e.g. 'g[D]oo[F#]d' -> '[D]good [F#]'
+    // e.g. 'pra[D]is[F#]ed' -> '[D]praised [F#]'
+    // e.g. 'luwalha[Em]tiin' -> '[Em]luwalhatiin'
+    // e.g. 'forgi[G]ven' -> '[G]forgiven'
+    res = res.replace(/\b([a-zA-Z0-9’']+)((\[[A-G][#b]?[^\]]*\][a-zA-Z0-9’']*)+)/g, (match, prefix, rest) => {
+        const chords = [];
+        const chordMatches = [...rest.matchAll(/\[([A-G][#b]?[^\]]*)\]/g)];
+        for (const cm of chordMatches) {
+            chords.push(cm[1]);
+        }
+        const cleanWord = prefix + rest.replace(/\[[^\]]+\]/g, '');
+        if (chords.length === 1) {
+            return `[${chords[0]}]${cleanWord}`;
+        }
+        return `[${chords[0]}]${cleanWord} ` + chords.slice(1).map(c => `[${c}]`).join(' ');
+    });
+
+    // Pass 4: Clean up any accidental double spaces (except leading indentation)
+    res = res.replace(/([^\s])\s{2,}/g, '$1 ');
+
+    return res;
+}
+
+/**
+ * Normalize all chord lines in a full lyrics block
+ */
+export function normalizeLyrics(lyrics) {
+    if (!lyrics) return '';
+    return lyrics.split('\n').map(normalizeChordLine).join('\n');
+}
+
+/**
  * Strip bracketed chords from lyrics for clean sharing/copying
  */
 export function stripChords(lyrics) {
     if (!lyrics) return '';
     return lyrics
         .split('\n')
-        .map(line => line.replace(/\[[^\]]+\]/g, '').trimEnd())
+        .map(line => normalizeChordLine(line).replace(/\[[^\]]+\]/g, '').replace(/[ \t]{2,}/g, ' ').trimEnd())
         .join('\n')
         .replace(/\n{3,}/g, '\n\n')
         .trim();

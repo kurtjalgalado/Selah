@@ -25,7 +25,7 @@ run('npm run build');
 run('npx cap sync android');
 
 // 4. Assemble Debug APK
-const gradleCmd = isWindows ? 'gradlew.bat assembleDebug' : './gradlew assembleDebug';
+const gradleCmd = isWindows ? '.\\gradlew.bat assembleDebug' : './gradlew assembleDebug';
 run(gradleCmd, path.join(rootDir, 'android'));
 
 // 5. Copy built APK

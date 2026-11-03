@@ -13,6 +13,7 @@ import { useBackHandler } from '../utils/backHandler';
 import { haptic } from '../utils/haptics';
 import {
     CaretLeft as ChevronLeft, CaretRight as ChevronRight, Play, Pause, CaretUp as ChevronUp, Tag, SlidersHorizontal,
+    TextAa, ArrowCounterClockwise as RotateCcw,
     X, MusicNotes as Music, CalendarBlank as Calendar, Clock, SpeakerHigh as Volume2, Stack as Layers, List, CornersOut as Maximize2, CornersIn as Minimize2, SkipBack, SkipForward
 } from '@phosphor-icons/react';
 
@@ -73,19 +74,44 @@ export default function SetlistPlayerScreen() {
         return () => { isMounted = false; };
     }, [setlist?.songIds?.join(','), allSongs]);
 
-    // Auto-scroll loop
+    // Auto-scroll 60fps hardware-accelerated RAF loop with sub-pixel accumulator
     useEffect(() => {
         if (!isAutoScrolling) return;
 
-        const interval = setInterval(() => {
-            window.scrollBy({ top: scrollSpeed, behavior: 'smooth' });
+        let animId;
+        let lastTime = performance.now();
+        let accumulated = 0;
 
-            if ((window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 15)) {
-                setIsAutoScrolling(false);
+        const loop = (currentTime) => {
+            const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
+            lastTime = currentTime;
+
+            // Natural stage reading speed: 1x = ~26px/s, 2x = ~52px/s, 3x = ~78px/s
+            const pixelsPerSec = scrollSpeed * 26;
+            accumulated += pixelsPerSec * dt;
+
+            if (accumulated >= 1) {
+                const step = Math.floor(accumulated);
+                accumulated -= step;
+                window.scrollBy({ top: step, behavior: 'auto' });
             }
-        }, 50);
 
-        return () => clearInterval(interval);
+            if ((window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 12)) {
+                setIsAutoScrolling(false);
+                return;
+            }
+
+            animId = requestAnimationFrame(loop);
+        };
+
+        animId = requestAnimationFrame((time) => {
+            lastTime = time;
+            animId = requestAnimationFrame(loop);
+        });
+
+        return () => {
+            if (animId) cancelAnimationFrame(animId);
+        };
     }, [isAutoScrolling, scrollSpeed]);
 
     // Lock body scroll when options modal is open
@@ -136,6 +162,9 @@ export default function SetlistPlayerScreen() {
     }
 
     const songKeys = setlist.songKeys || {};
+    const activeSong = loadedSongs[activeSongIndex] || loadedSongs[0] || null;
+    const rawActiveKey = activeSong ? (songKeys[activeSong.id] || activeSong.originalKey || activeSong.currentKey || 'G') : 'G';
+    const formattedActiveKey = formatKey(rawActiveKey, accidentalMode);
 
     const handleSetSongKey = async (songId, newKey) => {
         const updatedKeys = { ...songKeys, [songId]: newKey };
@@ -201,20 +230,21 @@ export default function SetlistPlayerScreen() {
             {/* ===== DISTRACTION-FREE STAGE MODE FLOATING HUD PILL ===== */}
             {isStageMode && (
                 <div className="fixed top-3 right-4 z-50 flex items-center gap-2 animate-fadeIn">
-                    <div className="glass bg-elevated/95 border border-accent/40 rounded-full px-3.5 py-1.5 shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs">
+                    <div className="glass bg-elevated/95 border border-accent/40 rounded-full pl-3.5 pr-1 py-1 shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs">
                         <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
                         <span className="font-bold text-textprimary max-w-[150px] sm:max-w-[220px] truncate">
-                            #{activeSongIndex + 1} {loadedSongs[activeSongIndex]?.title}
+                            <span className="font-mono text-accent">#{activeSongIndex + 1}</span> {loadedSongs[activeSongIndex]?.title}
                         </span>
                         <button
                             onClick={() => {
                                 haptic('light');
                                 setIsStageMode(false);
                             }}
-                            className="w-6 h-6 rounded-full bg-accent/20 hover:bg-accent text-accent hover:text-onaccent flex items-center justify-center transition active:scale-90"
+                            className="w-9 h-9 min-w-[44px] min-h-[44px] rounded-full bg-accent/20 hover:bg-accent text-accent hover:text-onaccent flex items-center justify-center transition active:scale-90"
                             title="Exit Stage Mode (Press F or Tap)"
+                            aria-label="Exit Stage Mode"
                         >
-                            <Minimize2 className="w-3.5 h-3.5" />
+                            <Minimize2 className="w-4 h-4" />
                         </button>
                     </div>
                 </div>
@@ -227,8 +257,9 @@ export default function SetlistPlayerScreen() {
                         <div className="flex items-center justify-between gap-3">
                             <button
                                 onClick={() => window.history.length > 1 ? navigate(-1) : navigate('/setlists')}
-                                className="w-10 h-10 rounded-xl bg-secondary border-0 flex items-center justify-center text-textmuted hover:text-textprimary hover:bg-surface-hover shrink-0"
+                                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-secondary border-0 flex items-center justify-center text-textmuted hover:text-textprimary hover:bg-surface-hover shrink-0"
                                 title="Back"
+                                aria-label="Back"
                             >
                                 <ChevronLeft className="w-6 h-6" />
                             </button>
@@ -238,31 +269,50 @@ export default function SetlistPlayerScreen() {
                                     <span className="px-2 py-0.5 rounded-full bg-accent/20 text-[9px] font-bold text-accent uppercase tracking-wider shrink-0 animate-pulse">
                                         LIVE PLAYER
                                     </span>
-                                    <h1 className="text-base font-bold truncate leading-tight text-textprimary">{setlist.title}</h1>
+                                    <h1 className="font-serif text-base sm:text-lg font-bold truncate leading-tight text-textprimary">{setlist.title}</h1>
                                 </div>
                                 <p className="text-xs text-textmuted truncate mt-0.5">
                                     {setlist.date || 'Undated'} • <span className="text-accent font-medium">{loadedSongs.length} Songs</span> • by <strong className="text-textprimary">{setlist.preparedBy || 'Worship Leader'}</strong>
                                 </p>
                             </div>
 
-                            <div className="flex items-center gap-1.5 shrink-0">
+                            {/* Unified Obsidian-Glass Action Capsule */}
+                            <div className="action-capsule rounded-2xl p-1 flex items-center gap-0.5 shrink-0">
                                 <button
                                     onClick={() => {
                                         haptic('light');
                                         setIsStageMode(true);
                                     }}
-                                    className="w-10 h-10 rounded-xl bg-secondary border-0 flex items-center justify-center text-textmuted hover:text-accent hover:bg-surface-hover active:scale-95"
+                                    className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center transition-all btn-icon-action border-0 ${
+                                        isStageMode
+                                            ? 'bg-accent/20 text-accent shadow-sm'
+                                            : 'bg-transparent hover:bg-surface-hover text-textprimary hover:text-accent'
+                                    }`}
                                     title="Enter Full-Screen Stage Mode"
+                                    aria-label="Enter Stage Mode"
                                 >
-                                    <Maximize2 className="w-4.5 h-4.5" />
+                                    <Maximize2 className="w-[19px] h-[19px]" weight="bold" />
                                 </button>
 
+                                <div className="h-5 w-px bg-themed shrink-0" />
+
                                 <button
-                                    onClick={() => setShowOptionsModal(true)}
-                                    className="w-10 h-10 rounded-xl bg-secondary border-0 flex items-center justify-center text-textmuted hover:text-accent hover:bg-surface-hover"
-                                    title="Display Options"
+                                    onClick={() => {
+                                        haptic('light');
+                                        setShowOptionsModal(true);
+                                    }}
+                                    className={`relative w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center transition-all btn-icon-action border-0 ${
+                                        showOptionsModal || fontSize !== 16 || !showChords
+                                            ? 'bg-accent/15 text-accent shadow-sm'
+                                            : 'bg-transparent hover:bg-surface-hover text-textprimary hover:text-accent'
+                                    }`}
+                                    title="Display & Stage Options"
+                                    aria-label="Display Options"
                                 >
-                                    <SlidersHorizontal className="w-5 h-5" />
+                                    <SlidersHorizontal className="w-[19px] h-[19px]" weight="bold" />
+                                    {(fontSize !== 16 || !showChords) && (
+                                        <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]" />
+                                    )}
                                 </button>
                             </div>
                         </div>
@@ -277,19 +327,19 @@ export default function SetlistPlayerScreen() {
                                         <button
                                             key={song.id || idx}
                                             onClick={() => scrollToSong(idx)}
-                                            className={`px-3 py-1.5 rounded-xl border-0 text-xs font-semibold whitespace-nowrap flex items-center gap-2 shrink-0 active:scale-95 transition-all ${
+                                            className={`min-h-[40px] px-3 py-1.5 rounded-xl border-0 text-xs font-semibold whitespace-nowrap flex items-center gap-2 shrink-0 active:scale-95 transition-all ${
                                                 isActive
                                                     ? 'bg-accent text-onaccent shadow-md shadow-accent/25'
                                                     : 'bg-secondary hover:bg-surface-hover text-textprimary'
                                             }`}
                                         >
-                                            <span className={`w-4 h-4 rounded-md font-bold text-[10px] flex items-center justify-center ${
+                                            <span className={`w-4 h-4 rounded-md font-mono font-bold text-[10px] flex items-center justify-center ${
                                                 isActive ? 'bg-black/20 text-onaccent' : 'bg-accent/20 text-accent'
                                             }`}>
                                                 {idx + 1}
                                             </span>
                                             <span className="max-w-[120px] truncate">{song.title}</span>
-                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                            <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded ${
                                                 isActive ? 'bg-black/20 text-onaccent' : 'bg-accent/15 text-accent'
                                             }`}>
                                                 {targetKey}
@@ -332,13 +382,13 @@ export default function SetlistPlayerScreen() {
                                 {/* Song Banner Header */}
                                 <div className="border-b border-themed pb-4 flex items-center justify-between gap-3 flex-wrap">
                                     <div className="flex items-center gap-3 min-w-0">
-                                        <div className="w-10 h-10 rounded-xl bg-accent text-onaccent font-extrabold text-base flex items-center justify-center shadow-lg shadow-accent/20 shrink-0">
+                                        <div className="w-10 h-10 rounded-xl bg-accent text-onaccent font-mono font-extrabold text-sm flex items-center justify-center shadow-lg shadow-accent/20 shrink-0">
                                             #{songIdx + 1}
                                         </div>
                                         <div className="min-w-0">
-                                            <h2 className="text-lg font-bold text-textprimary truncate leading-snug">{song.title}</h2>
+                                            <h2 className="font-serif text-lg sm:text-xl font-bold text-textprimary truncate leading-snug">{song.title}</h2>
                                             <p className="text-xs text-textmuted truncate">
-                                                {song.artist} • <span className="text-accent font-medium">{song.category}</span> {song.tempo ? `• ${song.tempo} BPM` : ''}
+                                                {song.artist} • <span className="text-accent font-medium">{song.category}</span> {song.tempo ? <span className="font-mono">• {song.tempo} BPM</span> : ''}
                                             </p>
                                         </div>
                                     </div>
@@ -354,12 +404,13 @@ export default function SetlistPlayerScreen() {
                                                     handleSetSongKey(song.id, keys[nextIdx]);
                                                     haptic('light');
                                                 }}
-                                                className="w-9 h-9 min-w-[36px] rounded-lg bg-surface-hover active:bg-accent/20 flex items-center justify-center text-base font-bold text-textprimary active:scale-95 transition-all"
+                                                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-lg bg-surface-hover active:bg-accent/20 flex items-center justify-center text-base font-bold text-textprimary active:scale-95 transition-all"
                                                 title="Key Down"
+                                                aria-label="Transpose Key Down"
                                             >
                                                 −
                                             </button>
-                                            <div className="px-2.5 h-9 flex items-center justify-center text-xs font-bold text-accent min-w-[36px]">
+                                            <div className="px-2.5 h-11 flex items-center justify-center font-mono text-xs font-bold text-accent min-w-[38px]">
                                                 {formattedTargetKey}
                                             </div>
                                             <button
@@ -370,14 +421,15 @@ export default function SetlistPlayerScreen() {
                                                     handleSetSongKey(song.id, keys[nextIdx]);
                                                     haptic('light');
                                                 }}
-                                                className="w-9 h-9 min-w-[36px] rounded-lg bg-surface-hover active:bg-accent/20 flex items-center justify-center text-base font-bold text-textprimary active:scale-95 transition-all"
+                                                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-lg bg-surface-hover active:bg-accent/20 flex items-center justify-center text-base font-bold text-textprimary active:scale-95 transition-all"
                                                 title="Key Up"
+                                                aria-label="Transpose Key Up"
                                             >
                                                 +
                                             </button>
                                         </div>
                                     ) : (
-                                        <div className="px-3 py-1 rounded-xl bg-accent/15 border border-accent/30 text-accent text-xs font-bold shrink-0">
+                                        <div className="px-3 py-1 rounded-xl bg-accent/15 border border-accent/30 text-accent font-mono text-xs font-bold shrink-0">
                                             Key: {formattedTargetKey}
                                         </div>
                                     )}
@@ -436,12 +488,12 @@ export default function SetlistPlayerScreen() {
                 >
                     {/* In Fullscreen Stage Mode: Hide other controls and ONLY show Next and Previous buttons */}
                     {isStageMode ? (
-                        <div className="pointer-events-auto bg-elevated/95 dark:bg-[#16161a]/95 backdrop-blur-2xl backdrop-saturate-150 ring-1 ring-black/5 dark:ring-white/[0.08] shadow-[0_12px_40px_rgba(0,0,0,0.35)] rounded-full p-1.5 flex items-center gap-2 sm:gap-3 animate-fadeIn">
+                        <div className="pointer-events-auto bg-elevated/95 backdrop-blur-2xl backdrop-saturate-150 border border-themed shadow-[0_12px_40px_rgba(0,0,0,0.55)] rounded-full p-1.5 flex items-center gap-2 sm:gap-3 animate-fadeIn">
                             {/* Previous Song Button */}
                             <button
                                 onClick={() => scrollToSong(Math.max(0, activeSongIndex - 1))}
                                 disabled={activeSongIndex <= 0}
-                                className="h-10 px-3.5 sm:px-4 rounded-full bg-surface-hover/70 dark:bg-white/[0.06] hover:bg-surface-active dark:hover:bg-white/10 active:bg-accent/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none flex items-center gap-1.5 text-xs font-bold text-textprimary transition-all shadow-sm"
+                                className="min-h-[44px] min-w-[44px] px-4 rounded-full bg-surface-hover/70 hover:bg-surface-active active:bg-accent/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none flex items-center gap-1.5 text-xs font-bold text-textprimary transition-all shadow-sm"
                                 title="Previous Song (Left Arrow / PageUp)"
                                 aria-label="Previous Song"
                             >
@@ -450,7 +502,7 @@ export default function SetlistPlayerScreen() {
                             </button>
 
                             {/* Song Index Indicator */}
-                            <div className="px-3 h-10 rounded-full bg-accent text-onaccent font-mono font-bold text-xs flex items-center justify-center shadow-sm select-none min-w-[56px]">
+                            <div className="px-3 min-h-[44px] rounded-full bg-accent text-onaccent font-mono font-bold text-xs flex items-center justify-center shadow-sm select-none min-w-[56px]">
                                 {activeSongIndex + 1} / {loadedSongs.length || 1}
                             </div>
 
@@ -458,7 +510,7 @@ export default function SetlistPlayerScreen() {
                             <button
                                 onClick={() => scrollToSong(Math.min(loadedSongs.length - 1, activeSongIndex + 1))}
                                 disabled={activeSongIndex >= loadedSongs.length - 1}
-                                className="h-10 px-3.5 sm:px-4 rounded-full bg-surface-hover/70 dark:bg-white/[0.06] hover:bg-surface-active dark:hover:bg-white/10 active:bg-accent/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none flex items-center gap-1.5 text-xs font-bold text-textprimary transition-all shadow-sm"
+                                className="min-h-[44px] min-w-[44px] px-4 rounded-full bg-surface-hover/70 hover:bg-surface-active active:bg-accent/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none flex items-center gap-1.5 text-xs font-bold text-textprimary transition-all shadow-sm"
                                 title="Next Song (Right Arrow / PageDown)"
                                 aria-label="Next Song"
                             >
@@ -470,9 +522,9 @@ export default function SetlistPlayerScreen() {
                         <>
                             {/* Floating Auto-Scroll Speed Selector */}
                             {isAutoScrolling && (
-                                <div className="mb-2 pointer-events-auto bg-elevated/95 dark:bg-[#16161a]/95 backdrop-blur-2xl ring-1 ring-black/5 dark:ring-white/[0.08] shadow-[0_8px_30px_rgba(0,0,0,0.25)] rounded-full px-2.5 py-1 flex items-center gap-1.5 sm:gap-2 animate-slideUp text-xs">
+                                <div className="mb-2 pointer-events-auto bg-elevated/95 backdrop-blur-2xl border border-themed shadow-[0_8px_30px_rgba(0,0,0,0.45)] rounded-full px-3 py-1 flex items-center gap-1.5 sm:gap-2 animate-slideUp text-xs">
                                     <span className="text-[10px] font-bold text-textmuted uppercase tracking-wider pl-1">Speed</span>
-                                    <div className="inline-flex rounded-full bg-surface-hover/70 dark:bg-white/[0.06] p-0.5">
+                                    <div className="inline-flex rounded-full bg-surface-hover/70 p-0.5">
                                         {[1, 2, 3, 4].map(speed => (
                                             <button
                                                 key={speed}
@@ -480,7 +532,7 @@ export default function SetlistPlayerScreen() {
                                                     haptic('light');
                                                     setScrollSpeed(speed);
                                                 }}
-                                                className={`w-6 sm:w-7 h-5 sm:h-6 rounded-full text-[10px] sm:text-[11px] font-bold transition-all ${
+                                                className={`min-w-[38px] min-h-[38px] px-2 rounded-full font-mono text-[11px] font-bold transition-all ${
                                                     scrollSpeed === speed
                                                         ? 'bg-accent text-onaccent shadow-sm'
                                                         : 'text-textmuted hover:text-textprimary'
@@ -490,66 +542,66 @@ export default function SetlistPlayerScreen() {
                                             </button>
                                         ))}
                                     </div>
-                                    <div className="h-3.5 w-px bg-themed/30 dark:bg-white/[0.08]" />
+                                    <div className="h-4 w-px bg-themed" />
                                     <button
                                         onClick={() => {
                                             haptic('light');
                                             scrollToTop();
                                         }}
-                                        className="w-5 sm:w-6 h-5 sm:h-6 rounded-full bg-surface-hover/70 dark:bg-white/[0.06] hover:bg-surface-active dark:hover:bg-white/10 flex items-center justify-center text-textmuted hover:text-textprimary transition-colors active:scale-90"
+                                        className="min-w-[38px] min-h-[38px] rounded-full bg-surface-hover/70 hover:bg-surface-active flex items-center justify-center text-textmuted hover:text-textprimary transition-colors active:scale-90"
                                         title="Scroll to Top"
                                         aria-label="Scroll to Top"
                                     >
-                                        <ChevronUp className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                        <ChevronUp className="w-4 h-4" />
                                     </button>
                                 </div>
                             )}
 
                             {/* Apple HIG Floating Stage Pill Dock */}
-                            <div className="pointer-events-auto max-w-full bg-elevated/95 dark:bg-[#16161a]/95 backdrop-blur-2xl backdrop-saturate-150 ring-1 ring-black/5 dark:ring-white/[0.08] shadow-[0_12px_40px_rgba(0,0,0,0.35)] rounded-full p-1 sm:p-1.5 flex items-center justify-between sm:justify-center gap-1 sm:gap-1.5">
+                            <div className="pointer-events-auto max-w-full bg-elevated/95 backdrop-blur-2xl backdrop-saturate-150 border border-themed shadow-[0_12px_40px_rgba(0,0,0,0.55)] rounded-full p-1.5 flex items-center justify-between sm:justify-center gap-1 sm:gap-1.5">
 
                                 {/* Song Navigation Stepper */}
-                                <div className="inline-flex items-center rounded-full bg-surface-hover/70 dark:bg-white/[0.06] p-0.5 shrink-0">
+                                <div className="inline-flex items-center rounded-full bg-surface-hover/70 p-0.5 shrink-0">
                                     <button
                                         onClick={() => scrollToSong(Math.max(0, activeSongIndex - 1))}
                                         disabled={activeSongIndex <= 0}
-                                        className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-textprimary hover:bg-surface-active dark:hover:bg-white/10 active:bg-accent/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none transition-all"
+                                        className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-textprimary hover:bg-surface-active active:bg-accent/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none transition-all"
                                         title="Previous Song (Left Arrow / PageUp)"
                                         aria-label="Previous Song"
                                     >
-                                        <SkipBack className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                        <SkipBack className="w-4 h-4" />
                                     </button>
-                                    <div className="min-w-[34px] sm:min-w-[38px] h-8 sm:h-9 px-1.5 flex items-center justify-center text-[10px] sm:text-xs font-mono font-bold text-textprimary select-none">
+                                    <div className="min-w-[38px] h-10 px-1.5 flex items-center justify-center text-xs font-mono font-bold text-textprimary select-none">
                                         {activeSongIndex + 1}/{loadedSongs.length || 1}
                                     </div>
                                     <button
                                         onClick={() => scrollToSong(Math.min(loadedSongs.length - 1, activeSongIndex + 1))}
                                         disabled={activeSongIndex >= loadedSongs.length - 1}
-                                        className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-textprimary hover:bg-surface-active dark:hover:bg-white/10 active:bg-accent/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none transition-all"
+                                        className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-textprimary hover:bg-surface-active active:bg-accent/20 active:scale-95 disabled:opacity-25 disabled:pointer-events-none transition-all"
                                         title="Next Song (Right Arrow / PageDown)"
                                         aria-label="Next Song"
                                     >
-                                        <SkipForward className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                        <SkipForward className="w-4 h-4" />
                                     </button>
                                 </div>
 
                                 {/* Flat / Sharp Accidental Toggle */}
                                 <button
                                     onClick={toggleAccidentalMode}
-                                    className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full text-xs font-bold transition-all flex items-center justify-center active:scale-95 shrink-0 ${
+                                    className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-full font-mono text-xs font-bold transition-all flex items-center justify-center active:scale-95 shrink-0 ${
                                         accidentalMode === 'sharp'
-                                            ? 'bg-surface-hover/70 dark:bg-white/[0.06] text-accent hover:bg-surface-active dark:hover:bg-white/10'
-                                            : 'bg-surface-hover/70 dark:bg-white/[0.06] text-amber-400 hover:bg-surface-active dark:hover:bg-white/10'
+                                            ? 'bg-surface-hover/70 text-accent hover:bg-surface-active'
+                                            : 'bg-surface-hover/70 text-amber-400 hover:bg-surface-active'
                                     }`}
                                     title={`Chord Notation: ${accidentalMode === 'sharp' ? 'Sharps (♯)' : 'Flats (♭)'}. Tap to switch.`}
                                     aria-label="Toggle Flat or Sharp Notation"
                                 >
-                                    <span className="text-xs sm:text-sm font-black leading-none">
+                                    <span className="text-sm font-black leading-none">
                                         {accidentalMode === 'sharp' ? '♯' : '♭'}
                                     </span>
                                 </button>
 
-                                <div className="h-4 w-px bg-themed/30 dark:bg-white/[0.08] shrink-0" />
+                                <div className="h-4 w-px bg-themed shrink-0" />
 
                                 {/* Chords Toggle Pill */}
                                 <button
@@ -557,19 +609,19 @@ export default function SetlistPlayerScreen() {
                                         haptic('light');
                                         setShowChords(!showChords);
                                     }}
-                                    className={`h-8 sm:h-9 px-2 sm:px-3 rounded-full text-xs font-semibold transition-all flex items-center gap-1 active:scale-95 shrink-0 ${
+                                    className={`min-h-[44px] px-3 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 ${
                                         showChords
                                             ? 'bg-accent/15 text-accent'
-                                            : 'bg-surface-hover/70 dark:bg-white/[0.06] text-textmuted hover:text-textprimary hover:bg-surface-active dark:hover:bg-white/10'
+                                            : 'bg-surface-hover/70 text-textmuted hover:text-textprimary hover:bg-surface-active'
                                     }`}
                                     title={showChords ? 'Hide Chords (Lyrics Only)' : 'Show Chords'}
                                     aria-label="Toggle Chords Visibility"
                                 >
-                                    <Tag className="w-3.5 h-3.5 shrink-0" />
-                                    <span className="text-[11px] sm:text-xs font-semibold">Chords</span>
+                                    <Tag className="w-4 h-4 shrink-0" />
+                                    <span className="text-xs font-semibold">Chords</span>
                                 </button>
 
-                                <div className="h-4 w-px bg-themed/30 dark:bg-white/[0.08] shrink-0" />
+                                <div className="h-4 w-px bg-themed shrink-0" />
 
                                 {/* Auto-Scroll Action Pill */}
                                 <button
@@ -577,20 +629,20 @@ export default function SetlistPlayerScreen() {
                                         haptic('light');
                                         setIsAutoScrolling(!isAutoScrolling);
                                     }}
-                                    className={`h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 ${
+                                    className={`min-h-[44px] px-3.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 active:scale-95 shrink-0 ${
                                         isAutoScrolling
                                             ? 'bg-accent text-onaccent shadow-md shadow-accent/25 animate-pulse'
-                                            : 'bg-surface-hover/70 dark:bg-white/[0.06] text-textprimary hover:bg-surface-active dark:hover:bg-white/10'
+                                            : 'bg-surface-hover/70 text-textprimary hover:bg-surface-active'
                                     }`}
                                     title={isAutoScrolling ? 'Pause Auto-Scroll' : 'Start Auto-Scroll'}
                                     aria-label="Toggle Auto-Scroll"
                                 >
                                     {isAutoScrolling ? (
-                                        <Pause className="w-3.5 h-3.5 fill-current shrink-0" />
+                                        <Pause className="w-4 h-4 fill-current shrink-0" />
                                     ) : (
-                                        <Play className="w-3.5 h-3.5 fill-current shrink-0" />
+                                        <Play className="w-4 h-4 fill-current shrink-0" />
                                     )}
-                                    <span className="text-[11px] sm:text-xs font-semibold">
+                                    <span className="text-xs font-semibold">
                                         {isAutoScrolling ? 'Pause' : 'Scroll'}
                                     </span>
                                 </button>
@@ -602,114 +654,255 @@ export default function SetlistPlayerScreen() {
                 document.body
             )}
 
-            {/* ===== DISPLAY OPTIONS MODAL DRAWER ===== */}
-            {showOptionsModal && (
+            {/* ===== FULL STAGE CONTROL CENTER (PLAYER SETTINGS BOTTOMSHEET — PORTALED) ===== */}
+            {showOptionsModal && typeof document !== 'undefined' && createPortal(
                 <div 
-                    className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
+                    className="fixed inset-0 bg-black/80 backdrop-blur-md z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
                     onClick={() => setShowOptionsModal(false)}
                 >
                     <div 
-                        className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-xl shadow-2xl animate-slideUp max-h-[88vh] sm:max-h-[90vh] flex flex-col pb-[max(1.2rem,env(safe-area-inset-bottom))] sm:pb-0 overflow-hidden"
+                        className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-lg shadow-2xl animate-sheetSpring max-h-[90vh] sm:max-h-[88vh] flex flex-col pb-[max(1.2rem,env(safe-area-inset-bottom))] sm:pb-0 overflow-hidden relative"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="w-12 h-1.5 bg-textmuted/30 rounded-full mx-auto my-3 sm:hidden shrink-0" />
-                        <div className="flex justify-between items-center px-6 py-3.5 border-b border-themed shrink-0">
-                            <h3 className="text-base font-bold flex items-center gap-2 text-textprimary">
-                                <SlidersHorizontal className="w-5 h-5 text-accent" /> Player Settings
-                            </h3>
-                            <button onClick={() => setShowOptionsModal(false)} className="text-textmuted hover:text-textprimary p-1">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
+                        {/* Top Liturgical Gold Specular Highlight */}
+                        <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-accent/55 to-transparent shrink-0" />
 
-                        <div className="p-6 space-y-5 overflow-y-auto flex-1 overscroll-contain">
-                            {/* Full-Screen Stage Mode Button */}
-                            <button
-                                onClick={() => {
-                                    setShowOptionsModal(false);
-                                    setIsStageMode(true);
-                                }}
-                                className="w-full py-3 px-4 rounded-xl bg-accent text-onaccent font-bold text-xs flex items-center justify-center gap-2 active:scale-98 shadow-sm"
-                            >
-                                <Maximize2 className="w-4 h-4" /> Enter Full-Screen Stage Mode
-                            </button>
+                        {/* Drag Handle */}
+                        <div className="w-11 h-1.5 bg-textmuted/30 rounded-full mx-auto mt-3 mb-1 sm:hidden shrink-0" />
 
-                            {/* Chord Accidental Notation (Flats vs Sharps) */}
-                            <div>
-                                <label className="block text-xs font-bold text-textmuted uppercase tracking-wider mb-2">
-                                    Chord Notation (Flats vs Sharps)
-                                </label>
-                                <div className="grid grid-cols-2 gap-2 bg-secondary p-1 rounded-xl border border-themed">
+                        {/* Header */}
+                        <div className="flex justify-between items-center px-5 py-3.5 border-b border-themed shrink-0">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shrink-0">
+                                    <SlidersHorizontal size={20} className="w-5 h-5" weight="bold" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-textprimary leading-tight">Live Player Display</h3>
+                                    <p className="text-[11px] text-textmuted">Stage typography & chord notation</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                {(fontSize !== 16 || !showChords) && (
                                     <button
                                         onClick={() => {
+                                            haptic('light');
+                                            setFontSize(16);
+                                            setShowChords(true);
+                                        }}
+                                        className="h-9 px-2.5 rounded-xl bg-secondary border border-themed text-[11px] font-bold text-accent flex items-center gap-1 btn-interact"
+                                        title="Reset Display Defaults"
+                                    >
+                                        <RotateCcw className="w-3.5 h-3.5" weight="bold" />
+                                        <span>Reset</span>
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => {
+                                        haptic('light');
+                                        setShowOptionsModal(false);
+                                    }}
+                                    className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-secondary border border-themed text-textmuted hover:text-textprimary flex items-center justify-center btn-icon-action"
+                                    aria-label="Close player settings"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-5 space-y-4 overflow-y-auto flex-1 overscroll-contain">
+                            {/* CARD 1: TYPOGRAPHY & LYRIC SCALE */}
+                            <div className="rounded-2xl bg-secondary/70 border border-themed p-4 space-y-3.5">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-textmuted uppercase tracking-wider flex items-center gap-1.5">
+                                        <TextAa className="w-4 h-4 text-accent" weight="bold" />
+                                        <span>Chord & Lyric Scale</span>
+                                    </span>
+                                    <span key={fontSize} className="px-2.5 py-0.5 rounded-lg bg-accent/15 border border-accent/30 font-mono text-xs font-bold text-accent animate-badgePop">
+                                        {fontSize}px
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            haptic('light');
+                                            setFontSize(s => Math.max(12, s - 2));
+                                        }}
+                                        disabled={fontSize <= 12}
+                                        className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-elevated border border-themed hover:border-accent/40 disabled:opacity-35 flex items-center justify-center font-sans text-xs font-bold text-textprimary btn-icon-action shrink-0"
+                                        aria-label="Decrease Font Size"
+                                    >
+                                        A−
+                                    </button>
+
+                                    <div className="flex-1 flex flex-col gap-1.5">
+                                        <input
+                                            type="range"
+                                            min="12"
+                                            max="26"
+                                            step="2"
+                                            value={fontSize}
+                                            onChange={(e) => {
+                                                haptic('light');
+                                                setFontSize(Number(e.target.value));
+                                            }}
+                                            style={{ '--slider-pct': `${((fontSize - 12) / 14) * 100}%` }}
+                                            className="slider-sacred"
+                                            aria-label="Font Size Slider"
+                                        />
+                                        <div className="flex justify-between px-1">
+                                            {[12, 14, 16, 18, 20, 22, 24, 26].map(tick => (
+                                                <span
+                                                    key={tick}
+                                                    className={`w-1 h-1 rounded-full transition-colors ${
+                                                        fontSize >= tick ? 'bg-accent' : 'bg-textmuted/30'
+                                                    }`}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            haptic('light');
+                                            setFontSize(s => Math.min(26, s + 2));
+                                        }}
+                                        disabled={fontSize >= 26}
+                                        className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-elevated border border-themed hover:border-accent/40 disabled:opacity-35 flex items-center justify-center font-sans text-sm font-bold text-textprimary btn-icon-action shrink-0"
+                                        aria-label="Increase Font Size"
+                                    >
+                                        A+
+                                    </button>
+                                </div>
+
+                                {/* Quick Preset Chips */}
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { label: 'Compact', size: 14 },
+                                        { label: 'Stage', size: 18 },
+                                        { label: 'Large', size: 22 },
+                                    ].map(preset => {
+                                        const isPresetActive = fontSize === preset.size;
+                                        return (
+                                            <button
+                                                key={preset.label}
+                                                type="button"
+                                                onClick={() => {
+                                                    haptic('light');
+                                                    setFontSize(preset.size);
+                                                }}
+                                                className={`min-h-[40px] py-1.5 px-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 btn-interact ${
+                                                    isPresetActive
+                                                        ? 'bg-accent text-onaccent border-accent shadow-sm shadow-accent/25'
+                                                        : 'bg-elevated text-textmuted border-themed hover:text-textprimary'
+                                                }`}
+                                            >
+                                                <span>{preset.label}</span>
+                                                <span className={`font-mono text-[10px] ${isPresetActive ? 'text-onaccent/80' : 'text-accent'}`}>
+                                                    {preset.size}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Live 1-Line Chord & Lyric Preview Strip */}
+                                <div className="rounded-xl bg-primary/90 border border-themed px-3.5 py-2.5 overflow-x-auto no-scrollbar">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-textmuted">Live Stage Preview</span>
+                                        <span className="font-mono text-[10px] text-accent">Key of {formattedActiveKey || 'G'}</span>
+                                    </div>
+                                    <ChordLineRenderer
+                                        line={`[${formattedActiveKey || 'G'}]All my life You have been [D]faithful`}
+                                        fontSize={fontSize}
+                                        showChords={showChords}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* CARD 2: CHORD NOTATION */}
+                            <div className="rounded-2xl bg-secondary/70 border border-themed p-4 space-y-3">
+                                <label className="block text-xs font-bold text-textmuted uppercase tracking-wider">
+                                    Chord Notation (Flats vs Sharps)
+                                </label>
+                                <div className="grid grid-cols-2 gap-2 bg-elevated p-1 rounded-xl border border-themed">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            haptic('light');
                                             setAccidentalMode('sharp');
                                             localStorage.setItem('selah_accidental_mode', 'sharp');
                                         }}
-                                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                        className={`min-h-[44px] py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 btn-interact ${
                                             accidentalMode === 'sharp'
                                                 ? 'bg-accent text-onaccent shadow-sm'
                                                 : 'text-textmuted hover:text-textprimary'
                                         }`}
                                     >
-                                        <span className="text-sm font-bold">♯</span> Sharps (C♯, F♯, G♯)
+                                        <span className="font-mono text-sm font-black">♯</span>
+                                        <span>Sharps (C♯, F♯)</span>
                                     </button>
                                     <button
+                                        type="button"
                                         onClick={() => {
+                                            haptic('light');
                                             setAccidentalMode('flat');
                                             localStorage.setItem('selah_accidental_mode', 'flat');
                                         }}
-                                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                        className={`min-h-[44px] py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 btn-interact ${
                                             accidentalMode === 'flat'
                                                 ? 'bg-accent text-onaccent shadow-sm'
                                                 : 'text-textmuted hover:text-textprimary'
                                         }`}
                                     >
-                                        <span className="text-sm font-bold">♭</span> Flats (D♭, G♭, A♭)
+                                        <span className="font-mono text-sm font-black">♭</span>
+                                        <span>Flats (D♭, E♭)</span>
                                     </button>
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-textmuted uppercase tracking-wider mb-2">
-                                    Font Size ({fontSize}px)
-                                </label>
-                                <div className="flex items-center gap-3 bg-secondary rounded-xl p-2 border border-themed">
-                                    <button
-                                        onClick={() => setFontSize(s => Math.max(12, s - 2))}
-                                        className="w-11 h-11 rounded-lg bg-surface-hover active:bg-surface-active flex items-center justify-center text-sm font-bold text-textprimary"
-                                    >
-                                        A−
-                                    </button>
-                                    <input
-                                        type="range"
-                                        min="12"
-                                        max="26"
-                                        step="2"
-                                        value={fontSize}
-                                        onChange={(e) => setFontSize(Number(e.target.value))}
-                                        className="flex-1 accent-accent h-2 bg-secondary rounded-lg cursor-pointer"
-                                    />
-                                    <button
-                                        onClick={() => setFontSize(s => Math.min(26, s + 2))}
-                                        className="w-11 h-11 rounded-lg bg-surface-hover active:bg-surface-active flex items-center justify-center text-sm font-bold text-textprimary"
-                                    >
-                                        A+
-                                    </button>
-                                </div>
-                            </div>
+                            {/* CARD 3: STAGE ACTIONS */}
+                            <div className="grid grid-cols-2 gap-2.5">
+                                <button
+                                    onClick={() => {
+                                        haptic('light');
+                                        setShowOptionsModal(false);
+                                        setIsStageMode(true);
+                                    }}
+                                    className="min-h-[52px] p-3 rounded-2xl bg-accent/15 border border-accent/35 text-left flex items-center gap-2.5 btn-interact"
+                                >
+                                    <div className="w-9 h-9 rounded-xl bg-accent text-onaccent flex items-center justify-center shrink-0">
+                                        <Maximize2 size={18} className="w-4 h-4" weight="bold" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-bold text-accent truncate">Stage Mode</p>
+                                        <p className="text-[10px] text-textmuted truncate">Fullscreen HUD</p>
+                                    </div>
+                                </button>
 
-                            <button
-                                onClick={() => {
-                                    scrollToTop();
-                                    setShowOptionsModal(false);
-                                }}
-                                className="w-full py-3 rounded-xl bg-secondary border-0 text-xs font-bold flex items-center justify-center gap-2 hover:bg-surface-hover active:bg-surface-active text-textprimary"
-                            >
-                                <ChevronUp className="w-4 h-4 text-accent" /> Scroll to Top
-                            </button>
+                                <button
+                                    onClick={() => {
+                                        haptic('light');
+                                        scrollToTop();
+                                        setShowOptionsModal(false);
+                                    }}
+                                    className="min-h-[52px] p-3 rounded-2xl bg-secondary border border-themed hover:border-accent/40 text-left flex items-center gap-2.5 btn-interact"
+                                >
+                                    <div className="w-9 h-9 rounded-xl bg-accent/15 text-accent flex items-center justify-center shrink-0">
+                                        <ChevronUp size={18} className="w-4 h-4" weight="bold" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-bold text-textprimary truncate">Scroll to Top</p>
+                                        <p className="text-[10px] text-textmuted truncate">First song</p>
+                                    </div>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

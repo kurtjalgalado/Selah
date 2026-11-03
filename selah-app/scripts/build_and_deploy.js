@@ -41,7 +41,7 @@ try {
 
   // Step 6: Assemble Android Debug APK
   console.log('\n[STEP 6/6] 🤖 Building Android Debug APK with Gradle...');
-  const gradleCmd = isWindows ? 'gradlew.bat assembleDebug' : './gradlew assembleDebug';
+  const gradleCmd = isWindows ? '.\\gradlew.bat assembleDebug' : './gradlew assembleDebug';
   run(gradleCmd, path.join(rootDir, 'android'));
 
   // Copy APK to root

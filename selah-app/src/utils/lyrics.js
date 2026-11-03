@@ -1,4 +1,4 @@
-import { isSectionLabel } from './chords.js';
+import { isSectionLabel, normalizeChordLine, normalizeLyrics } from './chords.js';
 
 const SECTION_TAG_REGEX = /^\[?(verse|chorus|bridge|intro|outro|pre-?\s*chorus|post-?\s*chorus|refrain|tag|ending|end|instrumental|inst|interlude|hook|part|solo|turnaround|turn\s*around|vamp|riff|break|coda|v\d+|c\d+|b\d+|\d+)[^\]]*\]?:?$/i;
 
@@ -48,6 +48,8 @@ export function parseLyrics(lyrics) {
     return sections;
 }
 
+export { normalizeChordLine, normalizeLyrics };
+
 /**
  * Check if a line contains chords (in brackets)
  */
@@ -65,6 +67,7 @@ export function isChordLine(line) {
  * Separate chords from lyrics for dual-line display
  */
 export function separateChords(line) {
+    const normalized = normalizeChordLine(line);
     const regex = /\[([^\]]+)\]/g;
     let match;
     let lyricText = '';
@@ -72,9 +75,9 @@ export function separateChords(line) {
     let lyricPos = 0;
     let lastIndex = 0;
 
-    while ((match = regex.exec(line)) !== null) {
+    while ((match = regex.exec(normalized)) !== null) {
         // Append lyrics before this chord marker
-        const textBefore = line.substring(lastIndex, match.index);
+        const textBefore = normalized.substring(lastIndex, match.index);
         lyricText += textBefore;
         lyricPos += textBefore.length;
 
@@ -85,7 +88,7 @@ export function separateChords(line) {
         lastIndex = match.index + match[0].length;
     }
 
-    lyricText += line.substring(lastIndex);
+    lyricText += normalized.substring(lastIndex);
 
     return {
         chordLine,
@@ -100,8 +103,9 @@ export function separateChords(line) {
 export function parseChordLineTokens(line) {
     if (!line && line !== '') return [];
     if (!line) return [];
-    if (!isChordLine(line)) {
-        return [{ chord: '', text: line }];
+    const normalized = normalizeChordLine(line);
+    if (!isChordLine(normalized)) {
+        return [{ chord: '', text: normalized }];
     }
 
     const regex = /\[([^\]]+)\]/g;
@@ -110,8 +114,8 @@ export function parseChordLineTokens(line) {
     let lastIndex = 0;
     let pendingChord = '';
 
-    while ((match = regex.exec(line)) !== null) {
-        const textBefore = line.substring(lastIndex, match.index);
+    while ((match = regex.exec(normalized)) !== null) {
+        const textBefore = normalized.substring(lastIndex, match.index);
         if (textBefore || pendingChord) {
             tokens.push({ chord: pendingChord, text: textBefore });
         }
@@ -119,7 +123,7 @@ export function parseChordLineTokens(line) {
         lastIndex = match.index + match[0].length;
     }
 
-    const textAfter = line.substring(lastIndex);
+    const textAfter = normalized.substring(lastIndex);
     if (textAfter || pendingChord) {
         tokens.push({ chord: pendingChord, text: textAfter });
     }

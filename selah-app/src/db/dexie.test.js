@@ -88,6 +88,19 @@ describe('setlistDB', () => {
         const fetched = await setlistDB.getById(id);
         expect(fetched.title).toBe('Sunday Service');
     });
+
+    it('put creates or updates setlist record', async () => {
+        const customId = 'setlist-xyz-99';
+        const id = await setlistDB.put({ id: customId, title: 'Easter Service', songIds: [] });
+        expect(id).toBe(customId);
+        const fetched = await setlistDB.getById(customId);
+        expect(fetched.title).toBe('Easter Service');
+
+        await setlistDB.put({ id: customId, title: 'Easter Service Updated', songIds: [1] });
+        const updated = await setlistDB.getById(customId);
+        expect(updated.title).toBe('Easter Service Updated');
+        expect(updated.songIds).toEqual([1]);
+    });
 });
 
 describe('getSongByIdOrTitle', () => {
@@ -148,6 +161,29 @@ describe('scheduleDB', () => {
         await scheduleDB.update(id, { serviceTitle: 'Youth Service' });
         const updated = await scheduleDB.getById(id);
         expect(updated.serviceTitle).toBe('Youth Service');
+    });
+
+    it('put creates or updates schedule record', async () => {
+        const schedId = 'sched-custom-123';
+        const id = await scheduleDB.put({
+            id: schedId,
+            serviceTitle: 'Celebration Sunday',
+            serviceDate: '2026-09-13',
+            assignments: [{ role_name: 'Guitarist', user_name: 'John' }]
+        });
+        expect(id).toBe(schedId);
+        const fetched = await scheduleDB.getById(schedId);
+        expect(fetched.serviceTitle).toBe('Celebration Sunday');
+
+        // Overwrite via put
+        await scheduleDB.put({
+            id: schedId,
+            serviceTitle: 'Celebration Sunday Updated',
+            serviceDate: '2026-09-13',
+            assignments: [{ role_name: 'Guitarist', user_name: 'John' }]
+        });
+        const updated = await scheduleDB.getById(schedId);
+        expect(updated.serviceTitle).toBe('Celebration Sunday Updated');
     });
 
     it('delete removes schedule record', async () => {

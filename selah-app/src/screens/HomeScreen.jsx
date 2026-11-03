@@ -4,7 +4,8 @@ import { useAuth } from '../auth/AuthContext';
 import { useSongCache } from '../context/SongCacheContext';
 import { 
     CalendarBlank as Calendar, MusicNotes as Music, Plus, Play, CaretRight as ChevronRight, 
-    Lightning as Zap, Clock, ListPlus, Flame, Heart, Stack as Layers, ArrowUpRight, Users, Lock, SignIn as LogIn
+    Lightning as Zap, Clock, ListPlus, Flame, Heart, Stack as Layers, ArrowUpRight, Users, Lock, SignIn as LogIn,
+    Sparkle
 } from '@phosphor-icons/react';
 import PullToRefresh from '../components/PullToRefresh';
 import { discreetBackgroundSync } from '../supabase/sync';
@@ -120,12 +121,24 @@ export default function HomeScreen() {
             .slice(0, 5);
     }, [songs, setlists]);
 
+    // Newly added songs sorted newest first (up to 5), using actual creation dates & creators
+    const newlyAddedSongs = useMemo(() => {
+        if (!songs || songs.length === 0) return [];
+        return [...songs]
+            .sort((a, b) => {
+                const timeA = new Date(a.createdAt || a.dateAdded || a.created_at || 0).getTime();
+                const timeB = new Date(b.createdAt || b.dateAdded || b.created_at || 0).getTime();
+                return timeB - timeA;
+            })
+            .slice(0, 5);
+    }, [songs]);
+
     return (
         <PullToRefresh onRefresh={discreetBackgroundSync}>
             <div className="min-h-screen bg-primary pb-28 animate-pageEnter text-textprimary">
                 {/* ===== HEADER & GREETING ===== */}
                 <header className="glass sticky top-0 z-30 border-b border-themed">
-                    <div className="px-5 pt-10 pb-4">
+                    <div className="px-3.5 sm:px-5 pt-10 pb-4">
                         <div className="flex items-center justify-between">
                             <AppLogo size="md" showText={true} />
                             
@@ -139,8 +152,9 @@ export default function HomeScreen() {
                                         haptic('light');
                                         navigate('/profile');
                                     }}
-                                    className="w-10 h-10 rounded-full bg-secondary border border-themed hover:border-emerald-500/50 flex items-center justify-center text-accent active:scale-95 transition-all shadow-sm overflow-hidden p-0.5"
+                                    className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full bg-secondary border border-themed hover:border-emerald-500/50 flex items-center justify-center text-accent active:scale-95 transition-all shadow-sm overflow-hidden p-0.5"
                                     title="Go to Profile"
+                                    aria-label="Go to Profile"
                                 >
                                     <UserAvatar
                                         seed={profile?.avatar_seed || user?.user_metadata?.avatar_seed || displayName}
@@ -155,27 +169,27 @@ export default function HomeScreen() {
                     </div>
                 </header>
 
-                <main className="px-5 sm:px-8 py-5 space-y-6 max-w-5xl mx-auto">
+                <main className="px-3.5 sm:px-8 py-5 space-y-6 max-w-5xl mx-auto">
                     {/* ===== USER GREETING BANNER ===== */}
                     <div className="space-y-1">
                         <p className="text-[11px] font-semibold text-accent tracking-widest uppercase flex items-center gap-1.5">
                             <Calendar className="w-3.5 h-3.5 text-accent" />
                             {dateFormatted}
                         </p>
-                        <h1 className="text-2xl sm:text-3xl font-bold text-textprimary tracking-tight">
+                        <h1 className="font-serif text-2xl sm:text-3xl font-bold text-textprimary tracking-tight">
                             {greeting}, <span className="text-accent">{displayName}</span>
                         </h1>
                     </div>
 
                     {/* ===== QUICK ACTIONS ===== */}
-                    <div className="grid grid-cols-3 gap-2.5">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
                         <button
                             onClick={() => {
                                 haptic('light');
                                 if (!user) navigate('/login');
                                 else setShowAddSetlist(true);
                             }}
-                            className="p-3.5 rounded-2xl bg-secondary hover:bg-surface-hover active:scale-[0.98] transition-all text-left flex flex-col justify-between group shadow-sm min-h-[82px] border-0"
+                            className="p-3.5 rounded-2xl bg-secondary hover:bg-surface-hover btn-interact text-left flex flex-col justify-between group shadow-sm min-h-[82px] border-0"
                         >
                             <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                                 <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -188,9 +202,9 @@ export default function HomeScreen() {
                                 haptic('light');
                                 navigate('/schedule');
                             }}
-                            className="p-3.5 rounded-2xl bg-secondary hover:bg-surface-hover active:scale-[0.98] transition-all text-left flex flex-col justify-between group shadow-sm min-h-[82px] border-0"
+                            className="p-3.5 rounded-2xl bg-secondary hover:bg-surface-hover btn-interact text-left flex flex-col justify-between group shadow-sm min-h-[82px] border-0"
                         >
-                            <div className="w-8 h-8 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                            <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                                 <Users className="w-4 h-4 stroke-[2.5]" />
                             </div>
                             <p className="text-xs font-bold text-textprimary truncate leading-tight">Ministers</p>
@@ -201,7 +215,7 @@ export default function HomeScreen() {
                                 haptic('light');
                                 setShowAddSong(true);
                             }}
-                            className="p-3.5 rounded-2xl bg-secondary hover:bg-surface-hover active:scale-[0.98] transition-all text-left flex flex-col justify-between group shadow-sm min-h-[82px] border-0"
+                            className="p-3.5 rounded-2xl bg-secondary hover:bg-surface-hover btn-interact text-left flex flex-col justify-between group shadow-sm min-h-[82px] border-0"
                         >
                             <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                                 <Music className="w-4 h-4 stroke-[2.5]" />
@@ -387,7 +401,8 @@ export default function HomeScreen() {
                                             haptic('light');
                                             navigate(`/song/${song.id}`);
                                         }}
-                                        className="group py-3 px-2 flex items-center gap-3 hover:bg-surface-hover active:bg-surface-active rounded-xl transition-all cursor-pointer"
+                                        style={{ '--stagger-idx': index }}
+                                        className="animate-list-item group py-3 px-2 flex items-center gap-3 hover:bg-surface-hover card-interact rounded-xl cursor-pointer"
                                     >
                                         {/* Track Number / Icon */}
                                         <span className="w-5 text-center text-xs font-bold text-textmuted group-hover:text-accent select-none">
@@ -421,10 +436,102 @@ export default function HomeScreen() {
                                                 }
                                                 setQuickAddSong(song);
                                             }}
-                                            className="w-9 h-9 rounded-full text-textmuted hover:text-accent hover:bg-accent/15 flex items-center justify-center active:scale-90 transition-all shrink-0"
+                                            className="w-10 h-10 min-h-[44px] min-w-[44px] rounded-xl bg-secondary/75 border border-themed text-accent hover:bg-accent/15 hover:border-accent/40 flex items-center justify-center btn-icon-action shrink-0"
                                             title="Add to Worship Setlist"
+                                            aria-label="Add to Worship Setlist"
                                         >
-                                            <ListPlus className="w-4.5 h-4.5" />
+                                            <ListPlus size={20} className="w-5 h-5" weight="bold" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ===== NEWLY ADDED SONGS (COMPACT SECTION WITH CREATION DATE & CREATOR) ===== */}
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between px-1">
+                            <h2 className="text-xs font-bold uppercase tracking-wider text-textmuted flex items-center gap-1.5">
+                                <Sparkle className="w-3.5 h-3.5 text-accent" /> Newly Added Songs
+                            </h2>
+                            <button
+                                onClick={() => navigate('/library')}
+                                className="text-[11px] font-semibold text-accent hover:underline flex items-center gap-0.5"
+                            >
+                                <span>See All</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+
+                        {songs === undefined ? (
+                            <div className="space-y-0.5 animate-fadeIn">
+                                {[1, 2, 3].map(i => (
+                                    <div key={i} className="py-2.5 px-2.5 rounded-xl flex items-center gap-3">
+                                        <div className="w-5 h-3.5 bg-secondary/70 animate-pulse rounded shrink-0 opacity-60" />
+                                        <div className="flex-1 space-y-1.5 min-w-0">
+                                            <div className="w-1/3 h-4 bg-secondary/70 animate-pulse rounded" />
+                                            <div className="w-1/4 h-3 bg-secondary/70 animate-pulse rounded opacity-70" />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : newlyAddedSongs.length === 0 ? (
+                            <div className="text-center py-6 text-xs text-textmuted bg-secondary/40 rounded-2xl border border-themed px-4">
+                                No songs in library yet. Add your first song to get started.
+                            </div>
+                        ) : (
+                            <div className="space-y-0.5">
+                                {newlyAddedSongs.map((song, index) => (
+                                    <div
+                                        key={song.id}
+                                        onClick={() => {
+                                            haptic('light');
+                                            navigate(`/song/${song.id}`);
+                                        }}
+                                        style={{ '--stagger-idx': index }}
+                                        className="animate-list-item group py-2.5 px-2 flex items-center gap-3 hover:bg-surface-hover card-interact rounded-xl cursor-pointer select-none"
+                                    >
+                                        {/* Index */}
+                                        <span className="w-5 text-center text-xs font-bold text-textmuted group-hover:text-accent select-none shrink-0">
+                                            {index + 1}
+                                        </span>
+
+                                        {/* Song Info */}
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="font-medium text-textprimary truncate text-sm sm:text-base leading-snug group-hover:text-accent transition-colors">
+                                                {song.title}
+                                            </h3>
+                                            <div className="flex items-center gap-1.5 text-xs text-textmuted mt-0.5 flex-wrap">
+                                                <span className="truncate max-w-[220px]">
+                                                    Added {formatSongDate(song)} · By {getSongCreator(song)}
+                                                </span>
+                                                {(song.originalKey || song.currentKey) && (
+                                                    <>
+                                                        <span className="text-textmuted/40">•</span>
+                                                        <span className="font-mono text-accent font-semibold text-[11px]">
+                                                            Key {song.originalKey || song.currentKey}
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Quick Add Button */}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                haptic('light');
+                                                if (!user) {
+                                                    navigate('/login');
+                                                    return;
+                                                }
+                                                setQuickAddSong(song);
+                                            }}
+                                            className="w-10 h-10 min-h-[44px] min-w-[44px] rounded-xl bg-secondary/75 border border-themed text-accent hover:bg-accent/15 hover:border-accent/40 flex items-center justify-center btn-icon-action shrink-0"
+                                            title="Add to Worship Setlist"
+                                            aria-label="Add to Worship Setlist"
+                                        >
+                                            <ListPlus size={20} className="w-5 h-5" weight="bold" />
                                         </button>
                                     </div>
                                 ))}
@@ -471,7 +578,8 @@ export default function HomeScreen() {
                                             haptic('light');
                                             navigate(`/song/${song.id}`);
                                         }}
-                                        className="group py-3 px-2 flex items-center gap-3 hover:bg-surface-hover active:bg-surface-active rounded-xl transition-all cursor-pointer"
+                                        style={{ '--stagger-idx': index }}
+                                        className="animate-list-item group py-3 px-2 flex items-center gap-3 hover:bg-surface-hover card-interact rounded-xl cursor-pointer"
                                     >
                                         {/* Rank Number */}
                                         <span className="w-5 text-center text-xs font-bold text-rose-400/80 group-hover:text-rose-400 select-none">
@@ -509,10 +617,11 @@ export default function HomeScreen() {
                                                 }
                                                 setQuickAddSong(song);
                                             }}
-                                            className="w-9 h-9 rounded-full text-textmuted hover:text-accent hover:bg-accent/15 flex items-center justify-center active:scale-90 transition-all shrink-0"
+                                            className="w-10 h-10 min-h-[44px] min-w-[44px] rounded-xl bg-secondary/75 border border-themed text-accent hover:bg-accent/15 hover:border-accent/40 flex items-center justify-center btn-icon-action shrink-0"
                                             title="Add to Worship Setlist"
+                                            aria-label="Add to Worship Setlist"
                                         >
-                                            <ListPlus className="w-4.5 h-4.5" />
+                                            <ListPlus size={20} className="w-5 h-5" weight="bold" />
                                         </button>
                                     </div>
                                 ))}
@@ -619,3 +728,24 @@ export default function HomeScreen() {
         </PullToRefresh>
     );
 }
+
+// ── Song Attribution & Date Helpers ──
+function formatSongDate(song) {
+    const raw = song?.createdAt || song?.dateAdded || song?.created_at;
+    if (!raw) return 'Recently';
+    try {
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return 'Recently';
+        return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    } catch {
+        return 'Recently';
+    }
+}
+
+function getSongCreator(song) {
+    if (song?.createdByName && song.createdByName.trim()) return song.createdByName.trim();
+    if (song?.created_by_name && song.created_by_name.trim()) return song.created_by_name.trim();
+    // Historical fallback when creator name was not persisted
+    return 'Worship Team';
+}
+

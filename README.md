@@ -1,6 +1,6 @@
 # Selah — Worship Planner
 
-[![Tests](https://img.shields.io/badge/tests-102%20passed-brightgreen.svg)](file:///c:/Users/Admin/Desktop/Selah/Selah/selah-app)
+[![Tests](https://img.shields.io/badge/tests-131%20passed-brightgreen.svg)](file:///c:/Users/Admin/Desktop/Selah/Selah/selah-app)
 [![Vercel Deployment](https://img.shields.io/badge/deployed%20on-Vercel-black?logo=vercel)](https://jfcm-selah.vercel.app)
 [![Android](https://img.shields.io/badge/platform-Android%20%7C%20Web%20%7C%20iOS-blue?logo=android)](file:///c:/Users/Admin/Desktop/Selah/Selah/selah-app/selah-app-debug.apk)
 [![Icons](https://img.shields.io/badge/icons-Phosphor%20Icons-purple)](https://phosphoricons.com)
@@ -58,7 +58,7 @@ A modern, mobile-first worship planning and live performance application for chu
 | **Local Database** | Dexie.js v4 (IndexedDB) |
 | **Backend & Auth** | Supabase (PostgreSQL, Row Level Security, Realtime Channels) |
 | **Mobile Runtime** | Capacitor 6 (Android native shell) |
-| **Testing** | Vitest 2, JSDOM (102 tests passed) |
+| **Testing** | Vitest 2, JSDOM (131 tests passed) |
 | **Deployment** | Vercel (Web), Gradle (Android APK) |
 
 ---
@@ -87,7 +87,7 @@ Open your browser at `http://localhost:5173`.
 ```bash
 npm test
 ```
-Executes all 102 unit tests verifying chord transposition, RBAC, avatar management, notification triggers, and Dexie database seeding.
+Executes all 131 unit tests verifying chord transposition, RBAC, avatar management, notification triggers, and Dexie database seeding.
 
 ---
 
@@ -158,5 +158,5 @@ Selah/
 
 ## 📄 License & Team
 
-Developed for **JFCM Missions** and church worship teams worldwide.  
+Developed for **Jesus First Christian Ministries (JFCM)** and church worship teams worldwide.  
 Repository: [kurtjalgalado/Selah](https://github.com/kurtjalgalado/Selah.git)

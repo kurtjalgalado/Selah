@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useSongCache } from '../context/SongCacheContext';
@@ -7,7 +8,7 @@ import { pushSetlistToSupabase } from '../supabase/sync';
 import { KEYS, getKeyIndex } from '../utils/chords';
 import { haptic } from '../utils/haptics';
 import { SetlistDateBadge } from '../screens/SetlistScreen';
-import { Lock, Shield, X, Plus } from '@phosphor-icons/react';
+import { Lock, Shield, X, Plus, Check } from '@phosphor-icons/react';
 
 export default function QuickAddToSetlistModal({ song, upcomingSetlists: propSetlists, user: propUser, onClose, onCreateSetlist }) {
     const navigate = useNavigate();
@@ -19,14 +20,16 @@ export default function QuickAddToSetlistModal({ song, upcomingSetlists: propSet
 
     const transposeKey = (dir) => {
         haptic('light');
-        const idx = getKeyIndex(selectedKey);
-        let next = (idx + dir) % 12;
-        if (next < 0) next += 12;
-        setSelectedKey(KEYS[next]);
+        const keyStr = String(selectedKey || 'C').trim();
+        const isMinor = keyStr.endsWith('m') && !keyStr.endsWith('dim');
+        const idx = getKeyIndex(keyStr);
+        const baseIdx = idx === -1 ? 0 : idx;
+        const next = (baseIdx + dir + 12) % 12;
+        setSelectedKey(KEYS[next] + (isMinor ? 'm' : ''));
     };
 
     const handleAdd = async (setlist) => {
-        haptic('light');
+        haptic('success');
         if (!currentUser) {
             navigate('/login');
             return;
@@ -35,24 +38,25 @@ export default function QuickAddToSetlistModal({ song, upcomingSetlists: propSet
             return;
         }
         const songIds = setlist.songIds || [];
-        if (!songIds.includes(song.id)) {
-            const updatedIds = [...songIds, song.id];
-            const updatedKeys = { ...(setlist.songKeys || {}), [song.id]: selectedKey };
-            await setlistDB.update(setlist.id, { songIds: updatedIds, songKeys: updatedKeys });
-            await pushSetlistToSupabase({ ...setlist, songIds: updatedIds, songKeys: updatedKeys }, currentUser);
-        }
+        const alreadyExists = songIds.some(id => String(id) === String(song.id));
+        const updatedIds = alreadyExists ? songIds : [...songIds, song.id];
+        const updatedKeys = { ...(setlist.songKeys || {}), [song.id]: selectedKey };
+        await setlistDB.update(setlist.id, { songIds: updatedIds, songKeys: updatedKeys });
+        await pushSetlistToSupabase({ ...setlist, songIds: updatedIds, songKeys: updatedKeys }, currentUser);
         onClose();
     };
 
+    const wrapPortal = (node) => (typeof document !== 'undefined' ? createPortal(node, document.body) : node);
+
     // Unauthenticated state
     if (!currentUser) {
-        return (
+        return wrapPortal(
             <div 
-                className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
+                className="fixed inset-0 bg-black/80 backdrop-blur-md z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
                 onClick={onClose}
             >
                 <div 
-                    className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-md shadow-2xl animate-slideUp p-6 sm:p-8 text-center space-y-4"
+                    className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-md shadow-2xl animate-sheetSpring p-6 sm:p-8 text-center space-y-4"
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="w-12 h-12 rounded-2xl bg-accent/15 border border-accent/30 text-accent flex items-center justify-center mx-auto">
@@ -67,7 +71,7 @@ export default function QuickAddToSetlistModal({ song, upcomingSetlists: propSet
                     <div className="flex gap-2.5 pt-2">
                         <button
                             onClick={onClose}
-                            className="flex-1 py-2.5 text-xs font-bold border border-themed rounded-xl text-textmuted"
+                            className="flex-1 min-h-[44px] py-2.5 text-xs font-bold border border-themed rounded-xl text-textmuted btn-interact"
                         >
                             Cancel
                         </button>
@@ -76,7 +80,7 @@ export default function QuickAddToSetlistModal({ song, upcomingSetlists: propSet
                                 onClose();
                                 navigate('/login');
                             }}
-                            className="flex-1 py-2.5 text-xs font-bold bg-accent text-onaccent rounded-xl shadow-md active:scale-95 transition"
+                            className="flex-1 min-h-[44px] py-2.5 text-xs font-bold bg-accent text-onaccent rounded-xl shadow-md btn-primary-interact"
                         >
                             Sign In
                         </button>
@@ -88,13 +92,13 @@ export default function QuickAddToSetlistModal({ song, upcomingSetlists: propSet
 
     // RBAC Role Check: Read-only member guard
     if (!canManageSetlists) {
-        return (
+        return wrapPortal(
             <div 
-                className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
+                className="fixed inset-0 bg-black/80 backdrop-blur-md z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
                 onClick={onClose}
             >
                 <div 
-                    className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-md shadow-2xl animate-slideUp p-6 sm:p-8 text-center space-y-4"
+                    className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-md shadow-2xl animate-sheetSpring p-6 sm:p-8 text-center space-y-4"
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="w-12 h-12 rounded-2xl bg-blue-500/15 border border-blue-500/30 text-blue-400 flex items-center justify-center mx-auto">
@@ -108,7 +112,7 @@ export default function QuickAddToSetlistModal({ song, upcomingSetlists: propSet
                     </div>
                     <button
                         onClick={onClose}
-                        className="w-full py-2.5 text-xs font-bold bg-secondary border border-themed rounded-xl text-textprimary hover:bg-surface-hover transition"
+                        className="w-full min-h-[44px] py-2.5 text-xs font-bold bg-secondary border border-themed rounded-xl text-textprimary hover:bg-surface-hover btn-interact"
                     >
                         Close
                     </button>
@@ -137,44 +141,52 @@ export default function QuickAddToSetlistModal({ song, upcomingSetlists: propSet
         return false;
     });
 
-    return (
+    return wrapPortal(
         <div 
-            className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
+            className="fixed inset-0 bg-black/80 backdrop-blur-md z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
             onClick={onClose}
         >
             <div 
-                className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-xl shadow-2xl animate-slideUp max-h-[88vh] sm:max-h-[90vh] flex flex-col pb-[max(1.2rem,env(safe-area-inset-bottom))] sm:pb-0 overflow-hidden"
+                className="bg-elevated rounded-t-[32px] sm:rounded-3xl border-t sm:border border-themed w-full sm:max-w-xl shadow-2xl animate-sheetSpring max-h-[88vh] sm:max-h-[90vh] flex flex-col pb-[max(1.2rem,env(safe-area-inset-bottom))] sm:pb-0 overflow-hidden relative"
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="w-12 h-1.5 bg-textmuted/30 rounded-full mx-auto my-3 sm:hidden shrink-0" />
+                <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-accent/55 to-transparent shrink-0" />
+                <div className="w-11 h-1.5 bg-textmuted/30 rounded-full mx-auto mt-3 mb-1 sm:hidden shrink-0" />
                 
-                <div className="flex justify-between items-center px-6 py-3 border-b border-themed shrink-0 bg-secondary/40">
-                    <div className="min-w-0">
-                        <h3 className="text-sm font-bold text-textprimary">Add to Setlist</h3>
+                <div className="flex justify-between items-center px-5 py-3.5 border-b border-themed shrink-0 bg-secondary/40">
+                    <div className="min-w-0 pr-3">
+                        <h3 className="text-base font-bold text-textprimary">Add to Setlist</h3>
                         <p className="text-xs text-accent font-semibold truncate">{song?.title}</p>
                     </div>
-                    <button onClick={onClose} className="p-1 text-textmuted hover:text-textprimary rounded-xl" aria-label="Close">
+                    <button
+                        onClick={onClose}
+                        className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-secondary border border-themed text-textmuted hover:text-textprimary flex items-center justify-center btn-icon-action shrink-0"
+                        aria-label="Close"
+                    >
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
                 {/* Key Selector */}
-                <div className="px-6 py-3 border-b border-themed flex items-center justify-between shrink-0 bg-secondary/20">
-                    <span className="text-xs font-bold text-textmuted uppercase tracking-wider">Arrange Key</span>
-                    <div className="flex items-center gap-1.5 bg-secondary rounded-2xl px-2 py-1 border border-themed">
+                <div className="px-5 py-3 border-b border-themed flex items-center justify-between shrink-0 bg-secondary/20">
+                    <div>
+                        <span className="text-xs font-bold text-textmuted uppercase tracking-wider block">Arrange Key</span>
+                        <span className="text-[11px] text-textmuted">Saved specifically for this lineup</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-secondary rounded-2xl p-1 border border-themed">
                         <button
                             type="button"
                             onClick={() => transposeKey(-1)}
-                            className="w-7 h-7 rounded-xl bg-surface-hover active:bg-accent/20 text-sm font-bold text-textprimary flex items-center justify-center"
+                            className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl bg-elevated hover:bg-surface-hover active:bg-accent/20 font-mono text-sm font-bold text-textprimary flex items-center justify-center btn-icon-action"
                             aria-label="Lower key"
                         >−</button>
-                        <span className="px-2.5 h-7 flex items-center justify-center text-xs font-bold font-mono text-accent min-w-[28px]">
+                        <span key={selectedKey} className="px-3 h-10 flex items-center justify-center text-sm font-bold font-mono text-accent min-w-[40px] animate-badgePop">
                             {selectedKey}
                         </span>
                         <button
                             type="button"
                             onClick={() => transposeKey(1)}
-                            className="w-7 h-7 rounded-xl bg-surface-hover active:bg-accent/20 text-sm font-bold text-textprimary flex items-center justify-center"
+                            className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl bg-elevated hover:bg-surface-hover active:bg-accent/20 font-mono text-sm font-bold text-textprimary flex items-center justify-center btn-icon-action"
                             aria-label="Raise key"
                         >+</button>
                     </div>
@@ -182,29 +194,33 @@ export default function QuickAddToSetlistModal({ song, upcomingSetlists: propSet
 
                 <div className="p-4 space-y-2 overflow-y-auto flex-1 overscroll-contain">
                     {tenantSetlists.length === 0 ? (
-                        <div className="text-center py-6 space-y-3">
+                        <div className="text-center py-8 space-y-3">
                             <p className="text-textmuted text-xs">No upcoming setlists available</p>
                             {canManageSetlists && onCreateSetlist && (
                                 <button
                                     onClick={onCreateSetlist}
-                                    className="px-4 py-2.5 bg-accent text-onaccent rounded-2xl text-xs font-bold active:scale-95 transition"
+                                    className="px-5 py-2.5 min-h-[44px] bg-accent text-onaccent rounded-2xl text-xs font-bold btn-primary-interact"
                                 >
                                     Create New Setlist
                                 </button>
                             )}
                         </div>
                     ) : (
-                        tenantSetlists.map(setlist => {
+                        tenantSetlists.map((setlist, idx) => {
                             const isOwner = !setlist.userId || (currentUser && String(setlist.userId) === String(currentUser.id)) || isSuperuser || isAdmin;
+                            const isAlreadyIn = (setlist.songIds || []).some(id => String(id) === String(song?.id));
 
                             return (
                                 <button
                                     key={setlist.id}
                                     onClick={() => isOwner && handleAdd(setlist)}
                                     disabled={!isOwner}
-                                    className={`w-full p-3 rounded-2xl border flex items-center justify-between text-left transition-all gap-3 ${
+                                    style={{ '--stagger-idx': idx }}
+                                    className={`animate-list-item w-full p-3.5 rounded-2xl border flex items-center justify-between text-left transition-all gap-3 min-h-[60px] ${
                                         isOwner
-                                            ? 'bg-secondary border-themed hover:border-accent active:scale-98 cursor-pointer'
+                                            ? isAlreadyIn
+                                                ? 'bg-accent/12 border-accent/45 hover:border-accent btn-interact cursor-pointer'
+                                                : 'bg-secondary border-themed hover:border-accent btn-interact cursor-pointer'
                                             : 'bg-secondary/40 border-themed opacity-60 cursor-not-allowed'
                                     }`}
                                 >
@@ -223,9 +239,11 @@ export default function QuickAddToSetlistModal({ song, upcomingSetlists: propSet
                                         </div>
                                     </div>
                                     {isOwner ? (
-                                        <Plus className="w-4 h-4 text-accent shrink-0" />
+                                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isAlreadyIn ? 'bg-accent text-onaccent' : 'bg-elevated border border-themed text-accent'}`}>
+                                            {isAlreadyIn ? <Check className="w-4 h-4" weight="bold" /> : <Plus className="w-4 h-4" weight="bold" />}
+                                        </div>
                                     ) : (
-                                        <Lock className="w-3.5 h-3.5 text-textmuted shrink-0" />
+                                        <Lock className="w-4 h-4 text-textmuted shrink-0" />
                                     )}
                                 </button>
                             );

@@ -11,9 +11,14 @@ export default function Toast({ message, type = 'success', onClose }) {
     const Icon = type === 'success' ? CheckCircle : AlertCircle;
 
     return (
-        <div className="fixed bottom-24 right-5 z-50 animate-slideIn">
-            <div className={`flex items-center gap-3 bg-elevated border ${color} px-4 py-3 rounded-xl shadow-xl text-textprimary`}>
-                <Icon className="w-5 h-5" />
+        <div
+            role="status"
+            aria-live="polite"
+            onClick={onClose}
+            className="fixed bottom-24 right-5 z-50 animate-slideUpModal cursor-pointer"
+        >
+            <div className={`flex items-center gap-3 bg-elevated border ${color} px-4 py-3 rounded-xl shadow-xl text-textprimary min-h-[44px]`}>
+                <Icon className="w-5 h-5 shrink-0" />
                 <span className="text-sm font-medium">{message}</span>
             </div>
         </div>

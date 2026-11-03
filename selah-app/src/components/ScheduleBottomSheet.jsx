@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useSongCache } from '../context/SongCacheContext';
 import { scheduleDB, setlistDB, notificationDB } from '../db/dexie';
 import { 
     pushScheduleToSupabase, 
+    deleteScheduleFromSupabase,
     pushSetlistToSupabase, 
     pushNotificationToSupabase,
     getUserChurchId 
@@ -377,6 +379,13 @@ export default function ScheduleBottomSheet({ schedule = null, onClose }) {
                 if (assign.user_id || assign.user_email) {
                     const isCurrentUser = Boolean(user && assign.user_id === user.id);
                     const notifId = `assign-${schedId}-${assign.id || assign.role_name}`;
+                    const targetEmail = assign.user_email || churchMembers.find(m => m.id === assign.user_id)?.email || '';
+                    const roleName = assign.role_name || 'Worship Minister';
+                    const timeFormatted = serviceTime ? ` at ${serviceTime}` : '';
+                    const scheduleNotes = notes && notes.trim() ? notes.trim() : 'None';
+
+                    const notifTitle = `Worship Assignment: ${roleName}`;
+                    const notifBody = `Service Title: ${serviceTitle.trim()}\nDate: ${serviceDate}${timeFormatted}\nAssignment: ${roleName}\nSchedule Notes: ${scheduleNotes}`;
 
                     if (isCurrentUser || !user) {
                         // Current user was assigned this role (or offline/guest mode):
@@ -387,10 +396,10 @@ export default function ScheduleBottomSheet({ schedule = null, onClose }) {
                             serviceDate,
                             serviceTime,
                             assignment: assign,
-                            notes: notes.trim(),
+                            notes: scheduleNotes,
                             churchId,
                             targetUserId: user?.id || null,
-                            targetEmail: assign.user_email
+                            targetEmail
                         });
                     } else if (assign.user_id) {
                         // Assigned to another team member:
@@ -400,25 +409,27 @@ export default function ScheduleBottomSheet({ schedule = null, onClose }) {
                             id: notifId,
                             userId: assign.user_id,
                             churchId,
-                            title: `Worship Assignment: ${assign.role_name}`,
-                            body: `You are scheduled for "${serviceTitle.trim()}" on ${serviceDate} (${serviceTime}). Notes: ${notes.trim() || 'None'}`,
+                            title: notifTitle,
+                            body: notifBody,
                             type: 'assignment',
-                            data: { scheduleId: schedId, serviceDate, serviceTime, roleName: assign.role_name, notes: notes.trim() },
+                            data: { scheduleId: schedId, serviceDate, serviceTime, roleName, notes: scheduleNotes, serviceTitle: serviceTitle.trim() },
                             isRead: false,
                             createdAt: now
                         };
                         if (user) {
                             await pushNotificationToSupabase(notifRecord, user);
                         }
-                        if (assign.user_email) {
+                        if (targetEmail) {
                             await dispatchAssignmentEmail({
-                                toEmail: assign.user_email,
-                                recipientName: assign.user_name || assign.user_email.split('@')[0],
+                                toEmail: targetEmail,
+                                recipientName: assign.user_name || targetEmail.split('@')[0],
                                 serviceTitle: serviceTitle.trim(),
                                 serviceDate,
                                 serviceTime,
-                                roleName: assign.role_name,
-                                notes: notes.trim()
+                                roleName,
+                                notes: scheduleNotes,
+                                targetUserId: assign.user_id,
+                                churchName: church?.name || 'Jesus First Christian Ministries'
                             });
                         }
                     }
@@ -436,13 +447,13 @@ export default function ScheduleBottomSheet({ schedule = null, onClose }) {
         }
     };
 
-    return (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/80 backdrop-blur-md animate-fadeIn">
+    const sheetNode = (
+        <div className="fixed inset-0 z-[120] flex flex-col justify-end bg-black/80 backdrop-blur-md animate-fadeIn">
             {/* Click outside to close backdrop */}
             <div className="flex-1" onClick={onClose} />
 
             {/* Bottom Sheet Container */}
-            <div className="bg-elevated border-t border-x border-themed rounded-t-[32px] w-full max-w-2xl mx-auto max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-slideUp">
+            <div className="bg-elevated border-t border-x border-themed rounded-t-[32px] w-full max-w-2xl mx-auto max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-sheetSpring">
                 {/* Drag Handle Bar */}
                 <div className="pt-3 pb-1 flex justify-center cursor-grab active:cursor-grabbing">
                     <div className="w-12 h-1.5 rounded-full bg-themed/80" />
@@ -779,4 +790,6 @@ export default function ScheduleBottomSheet({ schedule = null, onClose }) {
             </div>
         </div>
     );
+
+    return typeof document !== 'undefined' ? createPortal(sheetNode, document.body) : sheetNode;
 }

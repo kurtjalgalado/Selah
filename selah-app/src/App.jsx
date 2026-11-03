@@ -89,13 +89,13 @@ function BackButtonHandler() {
         <div className="flex justify-center gap-3 pt-2">
           <button
             onClick={() => setShowExitModal(false)}
-            className="flex-1 py-2.5 px-4 text-sm font-medium text-textmuted hover:text-textprimary bg-secondary border border-themed hover:border-accent/40 rounded-2xl transition"
+            className="flex-1 min-h-[44px] py-2.5 px-4 text-sm font-medium text-textmuted hover:text-textprimary bg-secondary border border-themed hover:border-accent/40 rounded-2xl transition"
           >
             Cancel
           </button>
           <button
             onClick={() => CapApp.exitApp()}
-            className="flex-1 py-2.5 px-4 text-sm font-semibold text-onaccent bg-accent hover:bg-accent/90 rounded-2xl transition shadow-lg shadow-accent/20"
+            className="flex-1 min-h-[44px] py-2.5 px-4 text-sm font-semibold text-onaccent bg-accent hover:bg-accent/90 rounded-2xl transition shadow-lg shadow-accent/20"
           >
             Exit
           </button>
